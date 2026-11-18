@@ -1,77 +1,126 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#000000">
+    <meta charset="UTF-8">
 
-  <title>J.A.R.V.I.S Mobile Edition</title>
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
 
-  <link rel="stylesheet" href="./style.css?v=2">
+    <title>J.A.R.V.I.S - Personal AI Assistant</title>
+
+    <link rel="stylesheet" href="style.css">
+
 </head>
 
 <body>
 
-  <header>
-    <h1>J.A.R.V.I.S</h1>
-    <p>MOBILE EDITION</p>
-  </header>
+    <!-- HEADER -->
+    <header>
+        <h1>J.A.R.V.I.S</h1>
+        <p>PERSONAL AI ASSISTANT</p>
+    </header>
 
-  <!-- AI CORE -->
-  <div class="core">
-    <div class="ring r1"></div>
-    <div class="ring r2"></div>
-    <div class="center"></div>
-  </div>
+    <!-- AI CORE -->
+    <div class="core">
 
-  <p class="core-text">CORE ACTIVE</p>
+        <div class="ring r1"></div>
 
-  <!-- SYSTEM STATUS -->
-  <section class="status">
-    <h2>SYSTEM STATUS</h2>
+        <div class="ring r2"></div>
 
-    <div class="row">
-      <span>AI CORE</span>
-      <b class="on">● ONLINE</b>
+        <div class="center"></div>
+
     </div>
 
-    <div class="row">
-      <span>NETWORK</span>
-      <b class="on">● ONLINE</b>
-    </div>
+    <p class="core-text" id="system-status">
+        SYSTEM READY
+    </p>
 
-    <div class="row">
-      <span>VOICE</span>
-      <b class="off">○ LOCKED</b>
-    </div>
+    <!-- SYSTEM DIAGNOSTICS -->
+    <section class="status">
 
-    <div class="row">
-      <span>MEMORY</span>
-      <b class="off">○ LOCKED</b>
-    </div>
-  </section>
+        <h2>SYSTEM DIAGNOSTICS</h2>
 
-  <!-- CHAT -->
-  <section class="chat" id="chat" aria-live="polite">
-    <div class="msg ai">
-      J.A.R.V.I.S: Hello, Boss. Systems ready.
-    </div>
-  </section>
+        <div class="row">
+            <span>AI ENGINE</span>
+            <b class="on">● OPERATIONAL</b>
+        </div>
 
-  <!-- INPUT -->
-  <div class="input-area">
-    <input
-      type="text"
-      id="msg"
-      placeholder="Ask J.A.R.V.I.S..."
-      autocomplete="off"
-    >
+        <div class="row">
+            <span>CONNECTION</span>
+            <b class="on">● ONLINE</b>
+        </div>
 
-    <button id="send">SEND</button><button id="mic-btn">🎙️</button>
-  </div>
+        <div class="row">
+            <span>VOICE INTERFACE</span>
+            <b class="on">● READY</b>
+        </div>
 
-  <script src="./script.js?v=2"></script>
+        <div class="row">
+            <span>LONG-TERM MEMORY</span>
+            <b class="on">● ACTIVE</b>
+        </div>
+
+    </section>
+
+    <!-- CHAT AREA -->
+    <section class="chat" id="chat">
+
+        <div class="msg ai">
+            J.A.R.V.I.S: Systems online.
+            How may I assist you?
+        </div>
+
+    </section>
+
+    <!-- INPUT AREA -->
+    <section class="input-area">
+
+        <input
+            type="text"
+            id="msg"
+            placeholder="Enter a command for J.A.R.V.I.S..."
+            autocomplete="off"
+        >
+
+        <button id="send" type="button">
+            EXECUTE
+        </button>
+
+        <button
+            id="mic-btn"
+            type="button"
+            aria-label="Activate voice input"
+        >
+            🎙️
+        </button>
+
+        <button
+            id="cam-btn"
+            type="button"
+            aria-label="Analyze image"
+        >
+            📷
+        </button>
+
+        <button id="clear-btn" type="button">
+            CLEAR MEMORY
+        </button>
+
+        <input
+            id="img-input"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+        >
+
+    </section>
+
+    <!-- JAVASCRIPT -->
+    <script src="script.js"></script>
 
 </body>
+
 </html>
