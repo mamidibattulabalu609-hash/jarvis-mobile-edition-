@@ -1,30 +1,24 @@
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
 
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S Mobile Edition</title>
 
-  <meta name="theme-color" content="#050b14">
-
-  <title>J.A.R.V.I.S - AI Assistant</title>
-
-  <!-- CSS CONNECTION -->
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=2">
 </head>
 
 <body>
 
-  <!-- HEADER -->
   <header>
     <h1>J.A.R.V.I.S</h1>
     <p>MOBILE EDITION</p>
   </header>
 
-  <!-- AI CORE ANIMATION -->
+  <!-- AI CORE -->
   <div class="core">
     <div class="ring r1"></div>
     <div class="ring r2"></div>
@@ -34,76 +28,50 @@
   <p class="core-text">CORE ACTIVE</p>
 
   <!-- SYSTEM STATUS -->
-  <div class="status">
-
+  <section class="status">
     <h2>SYSTEM STATUS</h2>
 
     <div class="row">
       <span>AI CORE</span>
-      <b id="aiStatus" class="off">○ CONNECTING</b>
+      <b class="on">● ONLINE</b>
     </div>
 
     <div class="row">
       <span>NETWORK</span>
-      <b id="networkStatus" class="on">● ONLINE</b>
+      <b class="on">● ONLINE</b>
     </div>
 
     <div class="row">
-      <span>VOICE INPUT</span>
-      <b id="voiceStatus" class="off">○ LOCKED</b>
-    </div>
-
-    <div class="row">
-      <span>VOICE OUTPUT</span>
-      <b id="speechStatus" class="off">○ LOCKED</b>
+      <span>VOICE</span>
+      <b class="off">○ LOCKED</b>
     </div>
 
     <div class="row">
       <span>MEMORY</span>
-      <b id="memoryStatus" class="off">○ LOCKED</b>
+      <b class="off">○ LOCKED</b>
     </div>
+  </section>
 
-  </div>
-
-  <!-- CHAT SECTION -->
-  <div class="chat" id="chat" aria-live="polite">
-    <div class="bot-message">
-      J.A.R.V.I.S: Systems initializing...
+  <!-- CHAT -->
+  <section class="chat" id="chat" aria-live="polite">
+    <div class="msg ai">
+      J.A.R.V.I.S: Hello, Boss. Systems ready.
     </div>
-  </div>
+  </section>
 
-  <!-- INPUT AREA -->
+  <!-- INPUT -->
   <div class="input-area">
-
     <input
       type="text"
       id="msg"
       placeholder="Ask J.A.R.V.I.S..."
       autocomplete="off"
-      aria-label="Enter your message"
     >
 
-    <button type="button" id="send">
-      SEND
-    </button>
-
+    <button id="send">SEND</button>
   </div>
 
-  <!-- VOICE INPUT -->
-  <div class="voice-area">
-
-    <button type="button" id="mic">
-      🎤 ACTIVATE VOICE
-    </button>
-
-    <button type="button" id="stopVoice">
-      🔇 STOP SPEAKING
-    </button>
-
-  </div>
-
-  <!-- JAVASCRIPT CONNECTION -->
-  <script src="./script.js" defer></script>
+  <script src="./script.js?v=2"></script>
 
 </body>
 </html>
