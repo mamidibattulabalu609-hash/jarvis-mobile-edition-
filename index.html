@@ -1,93 +1,279 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#000000">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S AI</title>
 
-  <title>J.A.R.V.I.S Voice Edition</title>
-
-  <link rel="stylesheet" href="./style.css">
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#000;color:#00ffff;
+ font-family:Arial,sans-serif;padding:20px;
+}
+h1{text-align:center;letter-spacing:5px}
+.subtitle{text-align:center;letter-spacing:4px;color:#00cccc}
+.core{
+ width:180px;height:180px;border-radius:50%;
+ border:4px solid #00ffff;
+ margin:40px auto;
+ box-shadow:0 0 25px #00ffff,inset 0 0 25px #00ffff;
+ display:flex;align-items:center;justify-content:center;
+ animation:pulse 2s infinite;
+}
+.core span{
+ width:75px;height:75px;background:#00aaaa;
+ border-radius:50%;
+ box-shadow:0 0 25px #00ffff;
+}
+@keyframes pulse{
+ 50%{box-shadow:0 0 45px #00ffff,inset 0 0 35px #00ffff}
+}
+.status,.chat{
+ border:1px solid #007777;border-radius:15px;
+ padding:20px;margin-top:25px;
+ box-shadow:0 0 10px #003333;
+}
+.status p{display:flex;justify-content:space-between}
+.online{color:#00ff66}
+.error{color:#ff3344}
+#chat{
+ height:270px;overflow-y:auto;
+ margin:20px 0;
+}
+.message{
+ padding:15px;margin:12px 0;
+ border-left:5px solid #00ffff;
+ background:#001515;border-radius:5px;
+ color:#fff;overflow-wrap:anywhere;
+}
+.user{border-left-color:white}
+.input-area{display:flex;gap:10px}
+input{
+ flex:1;min-width:0;padding:17px;
+ background:#000;border:1px solid cyan;
+ color:white;border-radius:10px;font-size:16px;
+}
+button{
+ background:#00eeee;color:#000;border:0;
+ padding:15px;border-radius:10px;
+ font-size:16px;font-weight:bold;
+ margin-top:8px;cursor:pointer;
+}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+button:disabled{opacity:.5}
+</style>
 </head>
 
 <body>
 
-  <header>
-    <h1>J.A.R.V.I.S</h1>
-    <p>MOBILE VOICE EDITION</p>
-  </header>
+<h1>J.A.R.V.I.S</h1>
+<div class="subtitle">MOBILE VOICE EDITION</div>
 
-  <!-- AI CORE -->
-  <div class="core">
-    <div class="ring r1"></div>
-    <div class="ring r2"></div>
-    <div class="center"></div>
-  </div>
+<div class="core"><span></span></div>
+<h3 style="text-align:center">CORE ACTIVE</h3>
 
-  <p class="core-text">CORE ACTIVE</p>
+<div class="status">
+<h2>SYSTEM STATUS</h2>
+<p>AI CORE <b id="aiStatus" class="error">● OFFLINE</b></p>
+<p>NETWORK <b id="netStatus" class="online">● READY</b></p>
+<p>VOICE <b id="voiceStatus" class="online">● READY</b></p>
+<p>MEMORY <b class="online">● SESSION</b></p>
+</div>
 
-  <!-- SYSTEM STATUS -->
-  <section class="status">
-    <h2>SYSTEM STATUS</h2>
+<div class="chat">
+<div id="chat">
+<div class="message">
+J.A.R.V.I.S: Hello Boss. System ready.
+</div>
+</div>
+</div>
 
-    <div class="row">
-      <span>AI CORE</span>
-      <b class="on">● ONLINE</b>
-    </div>
+<div class="input-area">
+<input id="userInput" placeholder="Ask J.A.R.V.I.S...">
+<button id="sendBtn" onclick="sendMessage()">SEND</button>
+</div>
 
-    <div class="row">
-      <span>NETWORK</span>
-      <b class="on">● ONLINE</b>
-    </div>
+<div class="controls">
+<button onclick="startVoice()">🎤 SPEAK</button>
+<button onclick="stopVoice()">■ STOP</button>
+<button onclick="changeKey()">🔑 API KEY</button>
+</div>
 
-    <div class="row">
-      <span>VOICE</span>
-      <b class="on" id="voiceStatus">● READY</b>
-    </div>
+<script>
+const MODEL = "gemini-2.5-flash";
 
-    <div class="row">
-      <span>MEMORY</span>
-      <b class="off">○ LOCKED</b>
-    </div>
-  </section>
+let API_KEY = localStorage.getItem("jarvis_key") || "";
 
-  <!-- CHAT -->
-  <section class="chat" id="chat" aria-live="polite">
-    <div class="msg ai">
-      J.A.R.V.I.S: Hello Boss. Voice system ready.
-    </div>
-  </section>
+let history = [];
 
-  <!-- TEXT INPUT -->
-  <div class="input-area">
-    <input
-      type="text"
-      id="msg"
-      placeholder="Ask J.A.R.V.I.S..."
-      autocomplete="off"
-    >
+const chat = document.getElementById("chat");
+const input = document.getElementById("userInput");
 
-    <button id="send">SEND</button>
-  </div>
+function addMessage(sender,text,isUser=false){
+ const div=document.createElement("div");
+ div.className="message"+(isUser?" user":"");
+ div.textContent=sender+": "+text;
+ chat.appendChild(div);
+ chat.scrollTop=chat.scrollHeight;
+}
 
-  <!-- VOICE CONTROLS -->
-  <div class="voice-area">
+function setStatus(id,text,good){
+ const el=document.getElementById(id);
+ el.textContent="● "+text;
+ el.className=good?"online":"error";
+}
 
-    <button id="voiceBtn" type="button">
-      🎤 SPEAK
-    </button>
+function changeKey(){
+ const key=prompt("Enter your Gemini API key:");
+ if(key && key.trim()){
+  API_KEY=key.trim();
+  localStorage.setItem("jarvis_key",API_KEY);
+  setStatus("aiStatus","KEY SAVED",true);
+ }
+}
 
-    <button id="stopVoice" type="button">
-      ■ STOP
-    </button>
+async function sendMessage(){
+ const question=input.value.trim();
+ if(!question)return;
 
-  </div>
+ if(!API_KEY){
+  changeKey();
+  if(!API_KEY)return;
+ }
 
-  <p class="voice-info" id="voiceInfo">
-    Press SPEAK and talk to J.A.R.V.I.S
-  </p>
+ input.value="";
+ addMessage("YOU",question,true);
 
-  <script src="./script.js"></script>
+ history.push({
+  role:"user",
+  parts:[{text:question}]
+ });
+
+ setStatus("aiStatus","CONNECTING",true);
+ document.getElementById("sendBtn").disabled=true;
+
+ try{
+  const url=
+  "https://generativelanguage.googleapis.com/v1beta/models/"
+  +MODEL+":generateContent";
+
+  const response=await fetch(url,{
+   method:"POST",
+   headers:{
+    "Content-Type":"application/json",
+    "x-goog-api-key":API_KEY
+   },
+   body:JSON.stringify({
+    systemInstruction:{
+     parts:[{
+      text:"You are J.A.R.V.I.S, a helpful AI assistant. "
+      +"Address the user as Boss. Give clear, friendly answers."
+     }]
+    },
+    contents:history,
+    generationConfig:{
+     temperature:0.7,
+     maxOutputTokens:1024
+    }
+   })
+  });
+
+  const data=await response.json();
+
+  if(!response.ok){
+   throw new Error(
+    data.error?.message || "HTTP "+response.status
+   );
+  }
+
+  const answer=data.candidates?.[0]?.content?.parts
+   ?.map(p=>p.text || "").join("").trim();
+
+  if(!answer)throw new Error("Empty AI response");
+
+  history.push({
+   role:"model",
+   parts:[{text:answer}]
+  });
+
+  addMessage("J.A.R.V.I.S",answer);
+  setStatus("aiStatus","ONLINE",true);
+  speak(answer);
+
+ }catch(error){
+  history.pop();
+  addMessage("J.A.R.V.I.S","AI ERROR: "+error.message);
+  setStatus("aiStatus","ERROR",false);
+  console.error(error);
+ }finally{
+  document.getElementById("sendBtn").disabled=false;
+ }
+}
+
+input.addEventListener("keydown",e=>{
+ if(e.key==="Enter")sendMessage();
+});
+
+// VOICE OUTPUT
+function speak(text){
+ if(!("speechSynthesis" in window))return;
+ speechSynthesis.cancel();
+ const speech=new SpeechSynthesisUtterance(text);
+ speech.lang="en-IN";
+ speech.rate=1;
+ speech.pitch=1;
+ speechSynthesis.speak(speech);
+}
+
+// VOICE INPUT
+let recognition=null;
+
+const SpeechRecognition=
+ window.SpeechRecognition ||
+ window.webkitSpeechRecognition;
+
+if(SpeechRecognition){
+ recognition=new SpeechRecognition();
+ recognition.lang="en-IN";
+ recognition.continuous=false;
+ recognition.interimResults=false;
+
+ recognition.onresult=function(event){
+  input.value=event.results[0][0].transcript;
+  sendMessage();
+ };
+
+ recognition.onerror=function(event){
+  setStatus("voiceStatus","ERROR: "+event.error,false);
+ };
+
+ recognition.onend=function(){
+  setStatus("voiceStatus","READY",true);
+ };
+}
+
+function startVoice(){
+ if(!recognition){
+  alert("Voice recognition is not supported in this browser.");
+  return;
+ }
+ setStatus("voiceStatus","LISTENING",true);
+ recognition.start();
+}
+
+function stopVoice(){
+ if(recognition)recognition.stop();
+ if("speechSynthesis" in window)speechSynthesis.cancel();
+ setStatus("voiceStatus","STOPPED",false);
+}
+
+if(API_KEY){
+ setStatus("aiStatus","KEY SAVED",true);
+}
+</script>
 
 </body>
 </html>
+
