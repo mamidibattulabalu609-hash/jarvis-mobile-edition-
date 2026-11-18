@@ -7,273 +7,538 @@
 <title>J.A.R.V.I.S AI</title>
 
 <style>
-*{box-sizing:border-box}
-body{
- margin:0;background:#000;color:#00ffff;
- font-family:Arial,sans-serif;padding:20px;
+* {
+  box-sizing: border-box;
 }
-h1{text-align:center;letter-spacing:5px}
-.subtitle{text-align:center;letter-spacing:4px;color:#00cccc}
-.core{
- width:180px;height:180px;border-radius:50%;
- border:4px solid #00ffff;
- margin:40px auto;
- box-shadow:0 0 25px #00ffff,inset 0 0 25px #00ffff;
- display:flex;align-items:center;justify-content:center;
- animation:pulse 2s infinite;
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: #000;
+  color: #00ffff;
+  font-family: monospace;
 }
-.core span{
- width:75px;height:75px;background:#00aaaa;
- border-radius:50%;
- box-shadow:0 0 25px #00ffff;
+
+h1 {
+  text-align: center;
+  text-shadow: 0 0 15px cyan;
+  letter-spacing: 4px;
 }
-@keyframes pulse{
- 50%{box-shadow:0 0 45px #00ffff,inset 0 0 35px #00ffff}
+
+h2 {
+  color: cyan;
 }
-.status,.chat{
- border:1px solid #007777;border-radius:15px;
- padding:20px;margin-top:25px;
- box-shadow:0 0 10px #003333;
+
+.panel {
+  border: 1px solid #00ffff;
+  border-radius: 25px;
+  padding: 22px;
+  margin: 20px auto;
+  max-width: 700px;
+  box-shadow: 0 0 15px #003d3d;
 }
-.status p{display:flex;justify-content:space-between}
-.online{color:#00ff66}
-.error{color:#ff3344}
-#chat{
- height:270px;overflow-y:auto;
- margin:20px 0;
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 25px 0;
+  font-size: 17px;
 }
-.message{
- padding:15px;margin:12px 0;
- border-left:5px solid #00ffff;
- background:#001515;border-radius:5px;
- color:#fff;overflow-wrap:anywhere;
+
+.status {
+  color: #00ff66;
 }
-.user{border-left-color:white}
-.input-area{display:flex;gap:10px}
-input{
- flex:1;min-width:0;padding:17px;
- background:#000;border:1px solid cyan;
- color:white;border-radius:10px;font-size:16px;
+
+.error {
+  color: #ff1744;
 }
-button{
- background:#00eeee;color:#000;border:0;
- padding:15px;border-radius:10px;
- font-size:16px;font-weight:bold;
- margin-top:8px;cursor:pointer;
+
+#chat {
+  height: 350px;
+  overflow-y: auto;
+  padding: 10px;
 }
-.controls{display:flex;gap:8px;flex-wrap:wrap}
-button:disabled{opacity:.5}
+
+.message {
+  padding: 15px;
+  margin: 12px 0;
+  border-left: 6px solid cyan;
+  border-radius: 10px;
+  background: #001515;
+  color: white;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.user {
+  border-left-color: white;
+}
+
+.bot {
+  border-left-color: cyan;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid cyan;
+  border-radius: 15px;
+  background: #000;
+  color: white;
+  font-size: 16px;
+}
+
+button {
+  padding: 17px;
+  border: none;
+  border-radius: 15px;
+  background: #00e5e5;
+  color: black;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(.96);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.buttons button {
+  flex: 1;
+  min-width: 100px;
+}
+
+.small {
+  color: #aaa;
+  font-size: 12px;
+  text-align: center;
+}
 </style>
 </head>
 
 <body>
 
 <h1>J.A.R.V.I.S</h1>
-<div class="subtitle">MOBILE VOICE EDITION</div>
+<p style="text-align:center">JUST A RATHER VERY INTELLIGENT SYSTEM</p>
 
-<div class="core"><span></span></div>
-<h3 style="text-align:center">CORE ACTIVE</h3>
+<!-- SYSTEM STATUS -->
+<div class="panel">
 
-<div class="status">
 <h2>SYSTEM STATUS</h2>
-<p>AI CORE <b id="aiStatus" class="error">● OFFLINE</b></p>
-<p>NETWORK <b id="netStatus" class="online">● READY</b></p>
-<p>VOICE <b id="voiceStatus" class="online">● READY</b></p>
-<p>MEMORY <b class="online">● SESSION</b></p>
+
+<div class="status-row">
+<span>AI CORE</span>
+<span id="aiStatus" class="error">● OFFLINE</span>
 </div>
 
-<div class="chat">
+<div class="status-row">
+<span>NETWORK</span>
+<span id="networkStatus" class="status">● READY</span>
+</div>
+
+<div class="status-row">
+<span>VOICE</span>
+<span id="voiceStatus" class="status">● READY</span>
+</div>
+
+<div class="status-row">
+<span>MEMORY</span>
+<span class="status">● SESSION</span>
+</div>
+
+</div>
+
+<!-- CHAT -->
+<div class="panel">
+
+<h2>J.A.R.V.I.S CHAT</h2>
+
 <div id="chat">
-<div class="message">
-J.A.R.V.I.S: Hello Boss. System ready.
+<div class="message bot">
+J.A.R.V.I.S: System ready. Please connect your AI brain.
 </div>
-</div>
-</div>
-
-<div class="input-area">
-<input id="userInput" placeholder="Ask J.A.R.V.I.S...">
-<button id="sendBtn" onclick="sendMessage()">SEND</button>
 </div>
 
 <div class="controls">
+<input
+id="userInput"
+type="text"
+placeholder="Ask J.A.R.V.I.S..."
+autocomplete="off">
+<button onclick="sendMessage()">SEND</button>
+</div>
+
+<div class="buttons">
 <button onclick="startVoice()">🎤 SPEAK</button>
 <button onclick="stopVoice()">■ STOP</button>
-<button onclick="changeKey()">🔑 API KEY</button>
+<button onclick="setApiKey()">🔑 API KEY</button>
+</div>
+
+<p class="small">
+J.A.R.V.I.S AI ASSISTANT
+</p>
+
 </div>
 
 <script>
-const MODEL = "gemini-2.5-flash";
 
-let API_KEY = localStorage.getItem("jarvis_key") || "";
+// ==================================
+// 1. GEMINI CONFIGURATION
+// ==================================
 
+const MODEL = "gemini-3.8-flash";
+
+const API_URL =
+`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+
+// API key stays in memory until page refresh.
+let API_KEY = "";
+
+// Conversation memory
 let history = [];
 
-const chat = document.getElementById("chat");
-const input = document.getElementById("userInput");
+// ==================================
+// 2. API KEY
+// ==================================
 
-function addMessage(sender,text,isUser=false){
- const div=document.createElement("div");
- div.className="message"+(isUser?" user":"");
- div.textContent=sender+": "+text;
- chat.appendChild(div);
- chat.scrollTop=chat.scrollHeight;
-}
+function setApiKey() {
 
-function setStatus(id,text,good){
- const el=document.getElementById(id);
- el.textContent="● "+text;
- el.className=good?"online":"error";
-}
+  const key = prompt("Enter your Gemini API Key:");
 
-function changeKey(){
- const key=prompt("Enter your Gemini API key:");
- if(key && key.trim()){
-  API_KEY=key.trim();
-  localStorage.setItem("jarvis_key",API_KEY);
-  setStatus("aiStatus","KEY SAVED",true);
- }
-}
+  if (key && key.trim()) {
 
-async function sendMessage(){
- const question=input.value.trim();
- if(!question)return;
+    API_KEY = key.trim();
 
- if(!API_KEY){
-  changeKey();
-  if(!API_KEY)return;
- }
+    document.getElementById("aiStatus").textContent =
+      "● KEY ADDED";
 
- input.value="";
- addMessage("YOU",question,true);
+    document.getElementById("aiStatus").className =
+      "status";
 
- history.push({
-  role:"user",
-  parts:[{text:question}]
- });
+    addMessage("API key added. Ready to connect.", "bot");
 
- setStatus("aiStatus","CONNECTING",true);
- document.getElementById("sendBtn").disabled=true;
-
- try{
-  const url=
-  "https://generativelanguage.googleapis.com/v1beta/models/"
-  +MODEL+":generateContent";
-
-  const response=await fetch(url,{
-   method:"POST",
-   headers:{
-    "Content-Type":"application/json",
-    "x-goog-api-key":API_KEY
-   },
-   body:JSON.stringify({
-    systemInstruction:{
-     parts:[{
-      text:"You are J.A.R.V.I.S, a helpful AI assistant. "
-      +"Address the user as Boss. Give clear, friendly answers."
-     }]
-    },
-    contents:history,
-    generationConfig:{
-     temperature:0.7,
-     maxOutputTokens:1024
-    }
-   })
-  });
-
-  const data=await response.json();
-
-  if(!response.ok){
-   throw new Error(
-    data.error?.message || "HTTP "+response.status
-   );
   }
 
-  const answer=data.candidates?.[0]?.content?.parts
-   ?.map(p=>p.text || "").join("").trim();
-
-  if(!answer)throw new Error("Empty AI response");
-
-  history.push({
-   role:"model",
-   parts:[{text:answer}]
-  });
-
-  addMessage("J.A.R.V.I.S",answer);
-  setStatus("aiStatus","ONLINE",true);
-  speak(answer);
-
- }catch(error){
-  history.pop();
-  addMessage("J.A.R.V.I.S","AI ERROR: "+error.message);
-  setStatus("aiStatus","ERROR",false);
-  console.error(error);
- }finally{
-  document.getElementById("sendBtn").disabled=false;
- }
 }
 
-input.addEventListener("keydown",e=>{
- if(e.key==="Enter")sendMessage();
+// ==================================
+// 3. CHAT DISPLAY
+// ==================================
+
+function addMessage(message, type) {
+
+  const chat = document.getElementById("chat");
+
+  const div = document.createElement("div");
+
+  div.className = "message " + type;
+
+  div.textContent =
+    (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message;
+
+  chat.appendChild(div);
+
+  chat.scrollTop = chat.scrollHeight;
+
+}
+
+// ==================================
+// 4. SEND MESSAGE TO GEMINI
+// ==================================
+
+async function sendMessage() {
+
+  const input = document.getElementById("userInput");
+
+  const message = input.value.trim();
+
+  if (!message) return;
+
+  if (!API_KEY) {
+
+    addMessage("Please add your Gemini API key first.", "bot");
+
+    return;
+
+  }
+
+  input.value = "";
+
+  addMessage(message, "user");
+
+  const aiStatus = document.getElementById("aiStatus");
+
+  aiStatus.textContent = "● CONNECTING...";
+  aiStatus.className = "status";
+
+  try {
+
+    const contents = [
+      {
+        role: "user",
+        parts: [{
+          text:
+          "You are J.A.R.V.I.S, a helpful AI assistant. " +
+          "Reply clearly and politely.\n\n" +
+          message
+        }]
+      }
+    ];
+
+    // Include previous conversation
+    contents.unshift(...history);
+
+    const response = await fetch(
+      `${API_URL}?key=${encodeURIComponent(API_KEY)}`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+          contents: contents
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error?.message || "Gemini API request failed"
+      );
+
+    }
+
+    const reply =
+      data.candidates?.[0]?.content?.parts
+      ?.map(part => part.text || "")
+      .join("")
+      .trim();
+
+    if (!reply) {
+
+      throw new Error("Gemini returned an empty response.");
+
+    }
+
+    // Save conversation for this session
+    history.push(
+      {
+        role: "user",
+        parts: [{ text: message }]
+      },
+      {
+        role: "model",
+        parts: [{ text: reply }]
+      }
+    );
+
+    addMessage(reply, "bot");
+
+    aiStatus.textContent = "● CONNECTED";
+    aiStatus.className = "status";
+
+    speak(reply);
+
+  } catch (error) {
+
+    console.error(error);
+
+    aiStatus.textContent = "● ERROR";
+    aiStatus.className = "error";
+
+    addMessage("AI ERROR: " + error.message, "bot");
+
+  }
+
+}
+
+// ==================================
+// 5. ENTER KEY SUPPORT
+// ==================================
+
+document.getElementById("userInput")
+.addEventListener("keydown", function(event) {
+
+  if (event.key === "Enter") {
+    sendMessage();
+  }
+
 });
 
-// VOICE OUTPUT
-function speak(text){
- if(!("speechSynthesis" in window))return;
- speechSynthesis.cancel();
- const speech=new SpeechSynthesisUtterance(text);
- speech.lang="en-IN";
- speech.rate=1;
- speech.pitch=1;
- speechSynthesis.speak(speech);
+// ==================================
+// 6. TEXT TO SPEECH
+// ==================================
+
+function speak(text) {
+
+  if (!("speechSynthesis" in window)) return;
+
+  window.speechSynthesis.cancel();
+
+  const speech = new SpeechSynthesisUtterance(text);
+
+  speech.lang = "en-IN";
+  speech.rate = 1;
+  speech.pitch = 1;
+
+  window.speechSynthesis.speak(speech);
+
 }
 
-// VOICE INPUT
-let recognition=null;
+// ==================================
+// 7. VOICE RECOGNITION
+// ==================================
 
-const SpeechRecognition=
- window.SpeechRecognition ||
- window.webkitSpeechRecognition;
+const SpeechRecognition =
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
 
-if(SpeechRecognition){
- recognition=new SpeechRecognition();
- recognition.lang="en-IN";
- recognition.continuous=false;
- recognition.interimResults=false;
+let recognition = null;
 
- recognition.onresult=function(event){
-  input.value=event.results[0][0].transcript;
-  sendMessage();
- };
+if (SpeechRecognition) {
 
- recognition.onerror=function(event){
-  setStatus("voiceStatus","ERROR: "+event.error,false);
- };
+  recognition = new SpeechRecognition();
 
- recognition.onend=function(){
-  setStatus("voiceStatus","READY",true);
- };
+  recognition.lang = "en-IN";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = function() {
+
+    document.getElementById("voiceStatus").textContent =
+      "● LISTENING";
+
+  };
+
+  recognition.onresult = function(event) {
+
+    const text =
+      event.results[0][0].transcript;
+
+    document.getElementById("userInput").value = text;
+
+    sendMessage();
+
+  };
+
+  recognition.onerror = function(event) {
+
+    document.getElementById("voiceStatus").textContent =
+      "● " + event.error.toUpperCase();
+
+  };
+
+  recognition.onend = function() {
+
+    document.getElementById("voiceStatus").textContent =
+      "● READY";
+
+  };
+
 }
 
-function startVoice(){
- if(!recognition){
-  alert("Voice recognition is not supported in this browser.");
-  return;
- }
- setStatus("voiceStatus","LISTENING",true);
- recognition.start();
+// ==================================
+// 8. START VOICE
+// ==================================
+
+function startVoice() {
+
+  if (!recognition) {
+
+    addMessage(
+      "Voice recognition is not supported by this browser.",
+      "bot"
+    );
+
+    return;
+
+  }
+
+  try {
+
+    recognition.start();
+
+  } catch (error) {
+
+    addMessage("Voice error: " + error.message, "bot");
+
+  }
+
 }
 
-function stopVoice(){
- if(recognition)recognition.stop();
- if("speechSynthesis" in window)speechSynthesis.cancel();
- setStatus("voiceStatus","STOPPED",false);
+// ==================================
+// 9. STOP VOICE AND SPEECH
+// ==================================
+
+function stopVoice() {
+
+  if (recognition) {
+
+    try {
+      recognition.stop();
+    } catch (error) {}
+
+  }
+
+  if ("speechSynthesis" in window) {
+
+    window.speechSynthesis.cancel();
+
+  }
+
+  document.getElementById("voiceStatus").textContent =
+    "● STOPPED";
+
 }
 
-if(API_KEY){
- setStatus("aiStatus","KEY SAVED",true);
+// ==================================
+// 10. NETWORK STATUS
+// ==================================
+
+function updateNetwork() {
+
+  const network =
+    document.getElementById("networkStatus");
+
+  if (navigator.onLine) {
+
+    network.textContent = "● READY";
+    network.className = "status";
+
+  } else {
+
+    network.textContent = "● OFFLINE";
+    network.className = "error";
+
+  }
+
 }
+
+window.addEventListener("online", updateNetwork);
+window.addEventListener("offline", updateNetwork);
+
+updateNetwork();
+
 </script>
 
 </body>
 </html>
-
