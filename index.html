@@ -4,9 +4,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>J.A.R.V.I.S</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="theme-color" content="#000000">
+
+  <title>J.A.R.V.I.S Mobile Edition</title>
+
+  <link rel="stylesheet" href="./style.css?v=2">
 </head>
+
 <body>
 
   <header>
@@ -14,6 +18,7 @@
     <p>MOBILE EDITION</p>
   </header>
 
+  <!-- AI CORE -->
   <div class="core">
     <div class="ring r1"></div>
     <div class="ring r2"></div>
@@ -22,7 +27,8 @@
 
   <p class="core-text">CORE ACTIVE</p>
 
-  <div class="status">
+  <!-- SYSTEM STATUS -->
+  <section class="status">
     <h2>SYSTEM STATUS</h2>
 
     <div class="row">
@@ -44,14 +50,16 @@
       <span>MEMORY</span>
       <b class="off">○ LOCKED</b>
     </div>
-  </div>
+  </section>
 
-  <div class="chat" id="chat" aria-live="polite">
+  <!-- CHAT -->
+  <section class="chat" id="chat" aria-live="polite">
     <div class="msg ai">
-      J.A.R.V.I.S: Hello, Boss. System ready.
+      J.A.R.V.I.S: Hello, Boss. Systems ready.
     </div>
-  </div>
+  </section>
 
+  <!-- INPUT -->
   <div class="input-area">
     <input
       type="text"
@@ -59,10 +67,11 @@
       placeholder="Ask J.A.R.V.I.S..."
       autocomplete="off"
     >
+
     <button id="send">SEND</button>
   </div>
 
-  <script src="script.js"></script>
+  <script src="./script.js?v=2"></script>
 
 </body>
 </html>
