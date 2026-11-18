@@ -1,66 +1,177 @@
-// ===== 1. API KEY (Safe: browser లో మాతమ్ర ే) =====
-let API_KEY = localStorage.getItem('jarvis_key');
-if(!API_KEY){
-API_KEY = prompt('Enter your Gemini API Key:');
-if(API_KEY) localStorage.setItem('jarvis_key', API_KEY);
+
+// ===== J.A.R.V.I.S VOICE + AI =====
+
+const chat = document.getElementById("chat");
+const input = document.getElementById("msg");
+const micBtn = document.getElementById("voiceBtn");
+const sendBtn = document.getElementById("send");
+const stopBtn = document.getElementById("stopVoice");
+const voiceInfo = document.getElementById("voiceInfo");
+
+// ===== CHAT DISPLAY =====
+
+function add(text, who) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  d.textContent = text;
+
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+
+  return d;
 }
-// ===== 2. SMART MODELS (ఒకటిfail అయితేnext auto try) =====
-const MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
-const chat=document.getElementById('chat');
-const input=document.getElementById('msg');
-const micBtn=document.getElementById('mic-btn');
-// ===== 3. GEMINI BRAIN (auto-fallback) =====
-async function callGemini(p){ let lastErr;
-for(const m of MODELS){
-try{
-const res=await fetch(
-"https://generativelanguage.googleapis.com/v1beta/models/"+m+":generateContent?key="
-+API_KEY,
-{method:"POST",headers:{"Content-Type":"application/json"},
-body:JSON.stringify({contents:[{parts:[{text:p}]}]})});
-const data=await res.json();
-if(data.error){
-lastErr=new Error(data.error.message);
-if(/high demand|temporar|quota|rate|unavailable|no longer
-available|deprecated/i.test(data.error.message)) continue;
-throw lastErr;
+
+// ===== GEMINI BACKEND CONNECTION =====
+
+async function askGemini(prompt) {
+  const loading = add("J.A.R.V.I.S: Thinking...", "ai");
+
+  sendBtn.disabled = true;
+
+  try {
+    // Backend must securely call Gemini API
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: prompt
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error("AI server error: " + response.status);
+    }
+
+    const data = await response.json();
+
+    if (!data.reply) {
+      throw new Error("Empty AI response");
+    }
+
+    loading.textContent = "J.A.R.V.I.S: " + data.reply;
+
+    speak(data.reply);
+
+  } catch (error) {
+    loading.textContent =
+      "J.A.R.V.I.S: " + error.message;
+
+  } finally {
+    sendBtn.disabled = false;
+  }
 }
-return data.candidates[0].content.parts[0].text;
-}catch(e){ lastErr=e; }
+
+// ===== TEXT MESSAGE =====
+
+function sendMessage() {
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  add("YOU: " + text, "user");
+
+  input.value = "";
+
+  askGemini(text);
 }
-throw lastErr;
+
+sendBtn.addEventListener("click", sendMessage);
+
+input.addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    sendMessage();
+  }
+});
+
+// ===== SPEECH RECOGNITION =====
+
+const SR =
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
+
+let recognition = null;
+
+if (SR) {
+  recognition = new SR();
+
+  recognition.lang = "en-US";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = function() {
+    micBtn.textContent = "LISTENING...";
+    voiceInfo.textContent = "J.A.R.V.I.S is listening...";
+  };
+
+  recognition.onresult = function(event) {
+    const text = event.results[0][0].transcript;
+
+    add("YOU: " + text, "user");
+
+    askGemini(text);
+  };
+
+  recognition.onerror = function(event) {
+    voiceInfo.textContent =
+      "Voice error: " + event.error;
+  };
+
+  recognition.onend = function() {
+    micBtn.textContent = "🎤 SPEAK";
+    voiceInfo.textContent =
+      "Press SPEAK to talk to J.A.R.V.I.S";
+  };
+
+  micBtn.addEventListener("click", function() {
+    try {
+      recognition.start();
+    } catch (error) {
+      voiceInfo.textContent =
+        "Microphone is already active.";
+    }
+  });
+
+  stopBtn.addEventListener("click", function() {
+    recognition.stop();
+    speechSynthesis.cancel();
+  });
+
+} else {
+  micBtn.disabled = true;
+  voiceInfo.textContent =
+    "Speech recognition is not supported in this browser.";
 }
-async function askGemini(p){
-add('J.A.R.V.I.S: Thinking...','ai');
-try{
-const reply=await callGemini(p);
-chat.lastChild.innerText='J.A.R.V.I.S: '+reply;
-speak(reply); // reply వచ్చి న వెంటనేVOICE
-}catch(e){
-chat.lastChild.innerText='J.A.R.V.I.S: ERROR - '+e.message;
+
+// ===== TEXT TO SPEECH =====
+
+let voices = [];
+
+function loadVoices() {
+  voices = speechSynthesis.getVoices();
 }
-}
-// ===== 4. SPEECH RECOGNITION (వినడం) =====
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const rec=new SR(); rec.lang='en-US'; // Telugu కి'te-IN'
-rec.onresult=(e)=>{const t=e.results[0][0].transcript;add('YOU: '+t,'user');askGemini(t);};
-micBtn.onclick=()=>{rec.start();micBtn.innerText='LISTENING...';};
-rec.onend=()=>{micBtn.innerText='🎙️';};
-// ===== 5. TEXT-TO-SPEECH (మాట్లాడటం) =====
-let voices=[];
-function loadVoices(){ voices=speechSynthesis.getVoices(); }
+
 loadVoices();
-speechSynthesis.onvoiceschanged=loadVoices;
-function speak(t){
-const u=new SpeechSynthesisUtterance(t); u.rate=1.05; u.pitch=0.85;
-const v=voices.find(v=>v.lang.startsWith('en'));
-if(v) u.voice=v;
-speechSynthesis.speak(u);
+
+speechSynthesis.onvoiceschanged = loadVoices;
+
+function speak(text) {
+  speechSynthesis.cancel();
+
+  const utterance =
+    new SpeechSynthesisUtterance(text);
+
+  utterance.rate = 1.05;
+  utterance.pitch = 0.85;
+
+  const voice = voices.find(v =>
+    v.lang.startsWith("en")
+  );
+
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  speechSynthesis.speak(utterance);
 }
-// ===== 6. TEXT SEND BUTTON =====
-document.getElementById('send').onclick=()=>{
-const t=input.value.trim(); if(!t)return;
-add('YOU: '+t,'user'); input.value=''; askGemini(t);
-};
-function add(t,w){const d=document.createElement('div');d.className='msg
-'+w;d.innerText=t;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
