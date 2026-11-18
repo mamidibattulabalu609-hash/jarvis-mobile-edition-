@@ -1,55 +1,50 @@
 
-const chat = document.getElementById('chat');
-const input = document.getElementById('msg');
-const send = document.getElementById('send');
+const chat = document.getElementById("chat");
+const input = document.getElementById("msg");
+const send = document.getElementById("send");
 
-// Send button
-send.addEventListener('click', sendMessage);
+send.addEventListener("click", sendMessage);
 
-// Enter key support
-input.addEventListener('keydown', function(event) {
-  if (event.key === 'Enter') {
+input.addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
     sendMessage();
   }
 });
 
+function addMessage(text, type) {
+  const message = document.createElement("div");
+
+  message.className = "msg " + type;
+  message.textContent = text;
+
+  chat.appendChild(message);
+  chat.scrollTop = chat.scrollHeight;
+
+  return message;
+}
+
 function sendMessage() {
   const text = input.value.trim();
 
-  if (!text) return;
+  if (text === "") return;
 
-  // Display user message
-  addMessage('YOU: ' + text, 'user');
+  addMessage("YOU: " + text, "user");
 
-  input.value = '';
-
-  // Display AI processing message
-  const reply = addMessage(
-    'J.A.R.V.I.S: Processing...',
-    'ai'
-  );
-
+  input.value = "";
   send.disabled = true;
 
-  // Demo response (not connected to real AI)
+  const reply = addMessage(
+    "J.A.R.V.I.S: Processing...",
+    "ai"
+  );
+
   setTimeout(function() {
     reply.textContent =
-      'J.A.R.V.I.S: Systems online. How may I assist you, Boss?';
+      "J.A.R.V.I.S: Systems online. How may I assist you, Boss?";
 
     send.disabled = false;
     input.focus();
+    chat.scrollTop = chat.scrollHeight;
+
   }, 1000);
-}
-
-// Add messages to chat
-function addMessage(text, who) {
-  const div = document.createElement('div');
-
-  div.className = 'msg ' + who;
-  div.textContent = text;
-
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-
-  return div;
 }
