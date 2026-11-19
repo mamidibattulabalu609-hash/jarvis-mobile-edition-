@@ -8,7 +8,7 @@
 const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"];
 
 function getApiUrl(modelName) {
-    return `https://googleapis.com{modelName}:generateContent`;
+    return "https://googleapis.com" + modelName + ":generateContent";
 }
 
 let API_KEY = localStorage.getItem("jarvis_key") || "";
@@ -57,7 +57,6 @@ function setStatus(message) {
 
 function saveHistory() {
     try {
-        // Keep last 20 turns so localStorage doesn't overflow
         const trimmed = chatHistory.slice(-20);
         localStorage.setItem("jarvis_history", JSON.stringify(trimmed));
     } catch (e) {
@@ -68,6 +67,12 @@ function saveHistory() {
 function restoreChat() {
     if (!chat) return;
     chat.innerHTML = "";
+
+    if (chatHistory.length === 0) {
+        addMessage("Systems online. How may I assist you?", "ai");
+        return;
+    }
+
     chatHistory.forEach(item => {
         const text = item.parts?.map(part => part.text || "").join("");
         if (!text) return;
@@ -238,9 +243,8 @@ function fileToBase64(file) {
     });
 }
 
-// ===== 7. LIVE WEATHER HELPER (FIXED URLS) =====
+// ===== 7. LIVE WEATHER HELPER =====
 async function getWeather(userPrompt) {
-    // Extract city name if provided, otherwise default to Vijayawada
     const cleanPrompt = userPrompt.replace(/\b(today|tomorrow|right now|please)\b/gi, "").trim();
     const match = cleanPrompt.match(/(?:weather|temperature)\s+(?:in|for|at)\s+([a-zA-Z\s]+)/i);
     const city = match ? match[1].trim() : "Vijayawada";
@@ -248,35 +252,32 @@ async function getWeather(userPrompt) {
     try {
         setStatus("FETCHING WEATHER...");
 
-        const geoRes = await fetch(
-            `https://open-meteo.com{encodeURIComponent(city)}&count=1&format=json`
-        );
+        const geoUrl = "https://open-meteo.com" + encodeURIComponent(city) + "&count=1&format=json";
+        const geoRes = await fetch(geoUrl);
         const geoData = await geoRes.json();
 
         if (!geoData.results || geoData.results.length === 0) {
-            return `I could not find weather data for ${city}.`;
+            return "I could not find weather data for " + city + ".";
         }
 
         const { latitude, longitude, name, country } = geoData.results[0];
 
-        const weatherRes = await fetch(
-            `https://open-meteo.com{latitude}&longitude=${longitude}&current_weather=true`
-        );
+        const weatherUrl = "https://open-meteo.com" + latitude + "&longitude=" + longitude + "&current_weather=true";
+        const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
         const current = weatherData.current_weather;
 
-        return `The current temperature in ${name}, ${country} is ${current.temperature}°C with wind speeds of ${current.windspeed} km/h.`;
+        return "The current temperature in " + name + ", " + country + " is " + current.temperature + "°C with wind speeds of " + current.windspeed + " km/h.";
     } catch (error) {
         console.error("Weather fetch error:", error);
         return "Unable to reach the weather satellite right now. Please try again.";
     }
 }
-
 // ===== 8. LOCAL COMMANDS =====
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
 
-    // 1. Weather (Must come BEFORE date/today check)
+    // 1. Weather
     if (/\b(weather|temperature|forecast)\b/.test(t)) {
         return await getWeather(text);
     }
@@ -296,21 +297,166 @@ async function handleTools(text) {
         return "Today is " + new Date().toLocaleDateString("en-IN", { weekday: "long" });
     }
 
-    // 5. Open websites
+    // 5. Open websites (Mobile popup-blocker safe)
     const websites = {
-        "open google": "https://google.com",
-        "open youtube": "https://youtube.com",
-        "open gmail": "https://google.com",
-        "open github": "https://github.com"
+        "open google": "https://www.google.com",
+        "open youtube": "https://www.youtube.com",
+        "open gmail": "https://mail.google.com",
+        "open github": "https://github.com",
+        "open instagram": "https://www.instagram.com",
+        "open whatsapp": "https://web.whatsapp.com"
     };
 
     for (const [cmd, url] of Object.entries(websites)) {
         if (t.includes(cmd)) {
-            window.open(url, "_blank");
-            return `Opening ${cmd.replace("open ", "")}...`;
+            const siteName = cmd.replace("open ", "");
+            setTimeout(() => {
+                const win = window.open(url, "_blank");
+                if (!win) {
+                    window.location.href = url;
+                }
+            }, 800);
+            return "Opening " + siteName + "...";
         }
     }
 
-    return null; // Not a local command; pass to Gemini
+    return null;
 }
+
+// ===== 9. GEMINI API WITH RETRY & FALLBACK =====
+async function callGeminiWithRetry(contentsPayload) {
+    if (!API_KEY) {
+        const enteredKey = prompt("Enter your Gemini API key:");
+        if (!enteredKey) throw new Error("API key is required.");
+        API_KEY = enteredKey.trim();
+        localStorage.setItem("jarvis_key", API_KEY);
+    }
+
+    for (const model of MODELS) {
+        const url = getApiUrl(model) + "?key=" + API_KEY;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        systemInstruction: {
+                            parts: [{ text: "You are J.A.R.V.I.S., an intelligent, concise, and helpful AI assistant." }]
+                        },
+                        contents: contentsPayload
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!reply) throw new Error("Empty response from AI.");
+                    return reply;
+                }
+
+                if (response.status === 503 || response.status === 429) {
+                    setStatus("HIGH DEMAND - RETRYING (" + attempt + "/3)...");
+                    if (attempt < 3) {
+                        await sleep(1000 * Math.pow(2, attempt - 1));
+                        continue;
+                    }
+                    setStatus("SWITCHING ENGINE...");
+                    break;
+                }
+
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error?.message || "HTTP Error " + response.status);
+
+            } catch (err) {
+                if (attempt === 3 && model === MODELS[MODELS.length - 1]) {
+                    throw err;
+                }
+            }
+        }
+    }
+
+    throw new Error("All AI engines are currently overloaded. Please try again in a moment.");
+}
+
+// ===== 10. MAIN SEND HANDLER =====
+async function sendMessage(imageData = null) {
+    if (busy) return;
+
+    const text = input ? input.value.trim() : "";
+    if (!text && !imageData) return;
+
+    busy = true;
+    if (input) input.value = "";
+    addMessage(text || "", "user");
+
+    try {
+        if (!imageData) {
+            const toolReply = await handleTools(text);
+            if (toolReply) {
+                addMessage(toolReply, "ai");
+                speak(toolReply);
+                setStatus("SYSTEM READY");
+                busy = false;
+                return;
+            }
+        }
+
+        setStatus("THINKING...");
+
+        const userParts = [];
+        if (text) userParts.push({ text });
+        if (imageData) {
+            userParts.push({
+                inlineData: {
+                    mimeType: imageData.mimeType,
+                    data: imageData.data
+                }
+            });
+        }
+
+        const requestContents = [
+            ...chatHistory.slice(-10),
+            { role: "user", parts: userParts }
+        ];
+
+        const aiReply = await callGeminiWithRetry(requestContents);
+
+        chatHistory.push({ role: "user", parts: [{ text: text || "" }] });
+        chatHistory.push({ role: "model", parts: [{ text: aiReply }] });
+        saveHistory();
+
+        addMessage(aiReply, "ai");
+        speak(aiReply);
+        setStatus("SYSTEM READY");
+
+    } catch (error) {
+        console.error("J.A.R.V.I.S. Error:", error);
+        addMessage("Error: " + error.message, "ai");
+        setStatus("CONNECTION ERROR");
+    } finally {
+        busy = false;
+    }
+}
+
+// ===== 11. EVENT LISTENERS & INIT =====
+if (sendBtn) sendBtn.addEventListener("click", () => sendMessage());
+
+if (input) {
+    input.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") sendMessage();
+    });
+}
+
+if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+        chatHistory = [];
+        localStorage.removeItem("jarvis_history");
+        restoreChat();
+        setStatus("MEMORY CLEARED");
+    });
+}
+
+restoreChat();
+setStatus("SYSTEM READY");
 
