@@ -1,153 +1,138 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <head>
-<!-- ... existing meta tags ... -->
-<!-- ADD THESE LINES FOR PWA SUPPORT -->
-<link rel="manifest" href="./manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<!-- ... rest of head ... -->
-    </head>
-    <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <title>J.A.R.V.I.S - Personal AI Assistant</title>
-
-    <link rel="stylesheet" href="style.css">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#020607">
+  <title>J.A.R.V.I.S. | Personal Voice Assistant</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-
-    <!-- HEADER -->
-    <header>
-        <h1>J.A.R.V.I.S</h1>
-        <p>PERSONAL AI ASSISTANT</p>
-
-        <div class="topbar-actions">
-            <span class="ready-badge"><span class="ready-dot"></span> READY</span>
-
-            <button class="icon-button wake-button" id="wake-btn" type="button"
-                    aria-label="Toggle Wake Word" title="Listen for 'Hey Jarvis'">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="22"/>
-                </svg>
-            </button>
-
-            <span id="wake-status" style="font-size: 0.7rem; color: #888; margin-right: 5px;">WAKE: OFF</span>
-
-            <button class="icon-button clear-button" id="clear-btn" type="button"
-                    aria-label="Clear current conversation" title="Clear current conversation">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 7h16M9 7V4h6v3m3 0-.8 13H6.8L6 7m4 3v6m4-6v6"/>
-                </svg>
-            </button>
-        </div>
+  <div class="hud-shell">
+    <header class="topbar">
+      <div class="brand-mark">
+        <span class="brand-name">J.A.R.V.I.S</span>
+        <span class="brand-level"><i></i><i></i><i></i></span>
+      </div>
+      <div class="online-label"><span class="pulse-dot"></span> SYSTEM ONLINE <span class="pulse-dot"></span></div>
+      <div class="clock-block">
+        <span id="current-day">MONDAY</span>
+        <strong id="current-time">10:30</strong>
+        <small id="current-period">AM</small>
+      </div>
     </header>
 
-    <!-- AI CORE -->
-    <div class="core">
+    <main>
+      <section class="hero-panel">
+        <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div><div class="corner corner-br"></div>
 
-        <div class="ring r1"></div>
-
-        <div class="ring r2"></div>
-
-        <div class="center"></div>
-
-    </div>
-
-    <p class="core-text" id="system-status">
-        SYSTEM READY
-    </p>
-
-    <!-- SYSTEM DIAGNOSTICS -->
-    <section class="status">
-
-        <h2>SYSTEM DIAGNOSTICS</h2>
-
-        <div class="row">
-            <span>AI ENGINE</span>
-            <b class="on">● OPERATIONAL</b>
+        <div class="hero-copy">
+          <p class="eyebrow">MAKE YOUR OWN</p>
+          <h1>JARVIS</h1>
+          <div class="title-rule"></div>
+          <p class="subtitle">VOICE ASSISTANT</p>
+          <div class="built-row">
+            <button class="round-mic" id="mic-btn" aria-label="Start voice input">🎙</button>
+            <div><span>BUILT BY <b>YOU.</b></span><strong>POWERED BY INTELLIGENCE.</strong></div>
+          </div>
         </div>
 
-        <div class="row">
-            <span>CONNECTION</span>
-            <b class="on">● ONLINE</b>
+        <div class="reactor-wrap" aria-label="Animated JARVIS reactor">
+          <div class="reactor-orbit orbit-one"></div>
+          <div class="reactor-orbit orbit-two"></div>
+          <div class="reactor-orbit orbit-three"></div>
+          <div class="reactor-orbit orbit-four"></div>
+          <div class="reactor-ring ring-one"></div>
+          <div class="reactor-ring ring-two"></div>
+          <div class="reactor-ring ring-three"></div>
+          <div class="reactor-core"><div class="core-glint"></div></div>
+          <span class="reactor-point point-left"></span>
+          <span class="reactor-point point-right"></span>
         </div>
 
-        <div class="row">
-            <span>VOICE INTERFACE</span>
-            <b class="on">● READY</b>
+        <aside class="system-card">
+          <div class="card-heading">SYSTEM STATUS <span>•••</span></div>
+          <div class="status-row"><span>POWER CORE</span><b>100%</b></div>
+          <div class="status-row"><span>SYSTEMS</span><b id="system-status">READY</b></div>
+          <div class="status-row"><span>NETWORK</span><b id="network-status">STANDBY</b></div>
+          <div class="status-row"><span>VOICE MODULE</span><b id="voice-status">READY</b></div>
+        </aside>
+      </section>
+
+      <section class="lower-hud">
+        <div class="metrics">
+          <div><small>AI ENGINE</small><strong>GEMINI</strong></div>
+          <div><small>MODEL</small><strong>3.6 FLASH</strong></div>
+          <div><small>MEMORY</small><strong>ACTIVE</strong></div>
         </div>
 
-        <div class="row">
-            <span>LONG-TERM MEMORY</span>
-            <b class="on">● ACTIVE</b>
+        <div class="waveform" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
         </div>
 
-    </section>
+        <div class="connection"><span id="connection-label">CONNECTED</span><i></i></div>
+      </section>
 
-    <!-- CHAT AREA -->
-    <section class="chat" id="chat">
-
-        <div class="msg ai">
-            J.A.R.V.I.S: Systems online.
-            How may I assist you?
+      <section class="assistant-console">
+        <div class="console-heading">
+          <span>COMMUNICATION INTERFACE</span>
+          <button id="clear-btn" class="icon-button" type="button" title="Clear conversation">⌫</button>
         </div>
+        <div id="chat" class="chat-window" aria-live="polite">
+          <div class="msg ai">J.A.R.V.I.S.: Systems online. How may I assist you?</div>
+        </div>
+        <div class="command-row">
+          <input id="msg" type="text" autocomplete="off" placeholder="Enter a command for J.A.R.V.I.S..." aria-label="Message JARVIS">
+          <button id="send" class="execute-button" type="button">EXECUTE <span>↗</span></button>
+          <button id="cam-btn" class="tool-button" type="button" aria-label="Attach image">▧</button>
+        </div>
+        <div class="secondary-controls">
+          <button id="wake-btn" class="text-control" type="button"><span class="tiny-led"></span><span id="wake-status">WAKE: OFF</span></button>
+          <span class="hint">VOICE &amp; IMAGE ASSISTANT</span>
+        </div>
+        <input id="img-input" type="file" accept="image/*" capture="environment" hidden>
+      </section>
+    </main>
 
-    </section>
+    <footer class="footer-line">
+      <span>J.A.R.V.I.S. PERSONAL AI SYSTEM</span>
+      <span>BUILT BY YOU · POWERED BY INTELLIGENCE</span>
+    </footer>
+  </div>
 
-    <!-- INPUT AREA -->
-    <section class="input-area">
-
-        <input
-            type="text"
-            id="msg"
-            placeholder="Enter a command for J.A.R.V.I.S..."
-            autocomplete="off"
-        >
-
-        <button id="send" type="button">
-            EXECUTE
-        </button>
-
-        <button
-            id="mic-btn"
-            type="button"
-            aria-label="Activate voice input"
-        >
-            🎙️
-        </button>
-
-        <button
-            id="cam-btn"
-            type="button"
-            aria-label="Analyze image"
-        >
-            📷
-        </button>
-
-
-        <input
-            id="img-input"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-        >
-
-    </section>
-
-    <!-- JAVASCRIPT -->
-    <script src="script.js"></script>
-
+  <script>
+    // Decorative clock and connection indicator.
+    function updateJarvisClock() {
+      const now = new Date();
+      const day = document.getElementById("current-day");
+      const time = document.getElementById("current-time");
+      const period = document.getElementById("current-period");
+      if (day) day.textContent = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
+      if (time) time.textContent = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).replace(/\s?(AM|PM)/i, "");
+      if (period) period.textContent = now.toLocaleTimeString("en-IN", { hour: "2-digit", hour12: true }).slice(-2).toUpperCase();
+    }
+    updateJarvisClock();
+    setInterval(updateJarvisClock, 30000);
+    if (navigator.onLine) {
+      document.getElementById("network-status").textContent = "ONLINE";
+    } else {
+      document.getElementById("network-status").textContent = "OFFLINE";
+      document.getElementById("connection-label").textContent = "DISCONNECTED";
+    }
+    window.addEventListener("online", () => {
+      document.getElementById("network-status").textContent = "ONLINE";
+      document.getElementById("connection-label").textContent = "CONNECTED";
+    });
+    window.addEventListener("offline", () => {
+      document.getElementById("network-status").textContent = "OFFLINE";
+      document.getElementById("connection-label").textContent = "DISCONNECTED";
+    });
+  </script>
+  <script src="script.js?v=6"></script>
 </body>
-
 </html>
