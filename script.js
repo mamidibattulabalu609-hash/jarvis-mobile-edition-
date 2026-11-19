@@ -273,6 +273,7 @@ async function getWeather(userPrompt) {
         return "Unable to reach the weather satellite right now. Please try again.";
     }
 }
+
 // ===== 8. LOCAL COMMANDS =====
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
@@ -299,164 +300,140 @@ async function handleTools(text) {
 
     // 5. Open websites (Mobile popup-blocker safe)
     const websites = {
-        "open google": "https://www.google.com",
-        "open youtube": "https://www.youtube.com",
-        "open gmail": "https://mail.google.com",
+        "open google": "https://google.com",
+        "open youtube": "https://youtube.com",
+        "open gmail": "https://google.com",
         "open github": "https://github.com",
-        "open instagram": "https://www.instagram.com",
-        "open whatsapp": "https://web.whatsapp.com"
+        "open instagram": "https://instagram.com",
+        "open whatsapp": "https://whatsapp.com"
     };
 
     for (const [cmd, url] of Object.entries(websites)) {
         if (t.includes(cmd)) {
             const siteName = cmd.replace("open ", "");
-            setTimeout(() => {
-                const win = window.open(url, "_blank");
-                if (!win) {
-                    window.location.href = url;
-                }
-            }, 800);
-            return "Opening " + siteName + "...";
-        }
-    }
-
-    return null;
+           with caution.
+setTimeout(() => {
+const win = window.open(url, "_blank");
+if (!win) {
+window.location.href = url;
 }
-
+}, 800);
+return "Opening " + siteName + "...";
+}
+}
+return null;
+}
 // ===== 9. GEMINI API WITH RETRY & FALLBACK =====
 async function callGeminiWithRetry(contentsPayload) {
-    if (!API_KEY) {
-        const enteredKey = prompt("Enter your Gemini API key:");
-        if (!enteredKey) throw new Error("API key is required.");
-        API_KEY = enteredKey.trim();
-        localStorage.setItem("jarvis_key", API_KEY);
-    }
-
-    for (const model of MODELS) {
-        const url = getApiUrl(model) + "?key=" + API_KEY;
-
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        systemInstruction: {
-                            parts: [{ text: "You are J.A.R.V.I.S., an intelligent, concise, and helpful AI assistant." }]
-                        },
-                        contents: contentsPayload
-                    })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!reply) throw new Error("Empty response from AI.");
-                    return reply;
-                }
-
-                if (response.status === 503 || response.status === 429) {
-                    setStatus("HIGH DEMAND - RETRYING (" + attempt + "/3)...");
-                    if (attempt < 3) {
-                        await sleep(1000 * Math.pow(2, attempt - 1));
-                        continue;
-                    }
-                    setStatus("SWITCHING ENGINE...");
-                    break;
-                }
-
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error?.message || "HTTP Error " + response.status);
-
-            } catch (err) {
-                if (attempt === 3 && model === MODELS[MODELS.length - 1]) {
-                    throw err;
-                }
-            }
-        }
-    }
-
-    throw new Error("All AI engines are currently overloaded. Please try again in a moment.");
+if (!API_KEY) {
+const enteredKey = prompt("Enter your Gemini API key:");
+if (!enteredKey) throw new Error("API key is required.");
+API_KEY = enteredKey.trim();
+localStorage.setItem("jarvis_key", API_KEY);
 }
-
+for (const model of MODELS) {
+const url = getApiUrl(model) + "?key=" + API_KEY;
+for (let attempt = 1; attempt <= 3; attempt++) {
+try {
+const response = await fetch(url, {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+systemInstruction: {
+parts: [{ text: "You are J.A.R.V.I.S., an intelligent, concise, and helpful AI assistant." }]
+},
+contents: contentsPayload
+})
+});
+if (response.ok) {
+const data = await response.json();
+const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+if (!reply) throw new Error("Empty response from AI.");
+return reply;
+}
+if (response.status === 503 || response.status === 429) {
+setStatus("HIGH DEMAND - RETRYING (" + attempt + "/3)...");
+if (attempt < 3) {
+await sleep(1000 * Math.pow(2, attempt - 1));
+continue;
+}
+setStatus("SWITCHING ENGINE...");
+break;
+}
+const errData = await response.json().catch(() => ({}));
+throw new Error(errData.error?.message || "HTTP Error " + response.status);
+} catch (err) {
+if (attempt === 3 && model === MODELS[MODELS.length - 1]) {
+throw err;
+}
+}
+}
+}
+throw new Error("All AI engines are currently overloaded. Please try again in a moment.");
+}
 // ===== 10. MAIN SEND HANDLER =====
 async function sendMessage(imageData = null) {
-    if (busy) return;
-
-    const text = input ? input.value.trim() : "";
-    if (!text && !imageData) return;
-
-    busy = true;
-    if (input) input.value = "";
-    addMessage(text || "", "user");
-
-    try {
-        if (!imageData) {
-            const toolReply = await handleTools(text);
-            if (toolReply) {
-                addMessage(toolReply, "ai");
-                speak(toolReply);
-                setStatus("SYSTEM READY");
-                busy = false;
-                return;
-            }
-        }
-
-        setStatus("THINKING...");
-
-        const userParts = [];
-        if (text) userParts.push({ text });
-        if (imageData) {
-            userParts.push({
-                inlineData: {
-                    mimeType: imageData.mimeType,
-                    data: imageData.data
-                }
-            });
-        }
-
-        const requestContents = [
-            ...chatHistory.slice(-10),
-            { role: "user", parts: userParts }
-        ];
-
-        const aiReply = await callGeminiWithRetry(requestContents);
-
-        chatHistory.push({ role: "user", parts: [{ text: text || "" }] });
-        chatHistory.push({ role: "model", parts: [{ text: aiReply }] });
-        saveHistory();
-
-        addMessage(aiReply, "ai");
-        speak(aiReply);
-        setStatus("SYSTEM READY");
-
-    } catch (error) {
-        console.error("J.A.R.V.I.S. Error:", error);
-        addMessage("Error: " + error.message, "ai");
-        setStatus("CONNECTION ERROR");
-    } finally {
-        busy = false;
-    }
+if (busy) return;
+const text = input ? input.value.trim() : "";
+if (!text && !imageData) return;
+busy = true;
+if (input) input.value = "";
+addMessage(text || "", "user");
+try {
+if (!imageData) {
+const toolReply = await handleTools(text);
+if (toolReply) {
+addMessage(toolReply, "ai");
+speak(toolReply);
+setStatus("SYSTEM READY");
+busy = false;
+return;
 }
-
+}
+setStatus("THINKING...");
+const userParts = [];
+if (text) userParts.push({ text });
+if (imageData) {
+userParts.push({
+inlineData: {
+mimeType: imageData.mimeType,
+data: imageData.data
+}
+});
+}
+const requestContents = [
+...chatHistory.slice(-10),
+{ role: "user", parts: userParts }
+];
+const aiReply = await callGeminiWithRetry(requestContents);
+chatHistory.push({ role: "user", parts: [{ text: text || "" }] });
+chatHistory.push({ role: "model", parts: [{ text: aiReply }] });
+saveHistory();
+addMessage(aiReply, "ai");
+speak(aiReply);
+setStatus("SYSTEM READY");
+} catch (error) {
+console.error("J.A.R.V.I.S. Error:", error);
+addMessage("Error: " + error.message, "ai");
+setStatus("CONNECTION ERROR");
+} finally {
+busy = false;
+}
+}
 // ===== 11. EVENT LISTENERS & INIT =====
 if (sendBtn) sendBtn.addEventListener("click", () => sendMessage());
-
 if (input) {
-    input.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") sendMessage();
-    });
+input.addEventListener("keypress", (e) => {
+if (e.key === "Enter") sendMessage();
+});
 }
-
 if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-        chatHistory = [];
-        localStorage.removeItem("jarvis_history");
-        restoreChat();
-        setStatus("MEMORY CLEARED");
-    });
+clearBtn.addEventListener("click", () => {
+chatHistory = [];
+localStorage.removeItem("jarvis_history");
+restoreChat();
+setStatus("MEMORY CLEARED");
+});
 }
-
 restoreChat();
 setStatus("SYSTEM READY");
-
