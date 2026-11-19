@@ -3,136 +3,164 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#020607">
-  <title>J.A.R.V.I.S. | Personal Voice Assistant</title>
+  <meta name="theme-color" content="#0b101a">
+  <title>J.A.R.V.I.S. — Personal Intelligent System</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="hud-shell">
+  <div class="app-shell">
     <header class="topbar">
-      <div class="brand-mark">
-        <span class="brand-name">J.A.R.V.I.S</span>
-        <span class="brand-level"><i></i><i></i><i></i></span>
+      <div class="identity">
+        <div class="logo-mark">✧</div>
+        <div>
+          <div class="logo-title">J.A.R.V.I.S.</div>
+          <div class="logo-subtitle">Just A Rather Very Intelligent System</div>
+        </div>
       </div>
-      <div class="online-label"><span class="pulse-dot"></span> SYSTEM ONLINE <span class="pulse-dot"></span></div>
-      <div class="clock-block">
-        <span id="current-day">MONDAY</span>
-        <strong id="current-time">10:30</strong>
-        <small id="current-period">AM</small>
+      <div class="header-actions">
+        <button class="header-icon" id="sound-toggle" type="button" aria-label="Sound">◖))</button>
+        <button class="header-icon" id="settings-toggle" type="button" aria-label="Settings">⚙</button>
+        <button class="header-icon" id="power-toggle" type="button" aria-label="Power">⏻</button>
       </div>
     </header>
 
-    <main>
-      <section class="hero-panel">
-        <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
-        <div class="corner corner-bl"></div><div class="corner corner-br"></div>
-
-        <div class="hero-copy">
-          <p class="eyebrow">MAKE YOUR OWN</p>
-          <h1>JARVIS</h1>
-          <div class="title-rule"></div>
-          <p class="subtitle">VOICE ASSISTANT</p>
-          <div class="built-row">
-            <button class="round-mic" id="mic-btn" aria-label="Start voice input">🎙</button>
-            <div><span>BUILT BY <b>YOU.</b></span><strong>POWERED BY INTELLIGENCE.</strong></div>
+    <main class="dashboard">
+      <aside class="left-column">
+        <section class="voice-card panel">
+          <div class="orb-area">
+            <div class="orb orbit-a"></div>
+            <div class="orb orbit-b"></div>
+            <div class="orb orbit-c"></div>
+            <div class="orb-core"></div>
+            <i class="orb-dot dot-a"></i><i class="orb-dot dot-b"></i>
           </div>
-        </div>
+          <div class="voice-wave" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <button id="mic-btn" class="voice-button" type="button">
+            <span class="mic-symbol">♩</span> Start Voice Command
+          </button>
+          <div class="voice-caption" id="voice-caption">VOICE INTERFACE READY</div>
+        </section>
 
-        <div class="reactor-wrap" aria-label="Animated JARVIS reactor">
-          <div class="reactor-orbit orbit-one"></div>
-          <div class="reactor-orbit orbit-two"></div>
-          <div class="reactor-orbit orbit-three"></div>
-          <div class="reactor-orbit orbit-four"></div>
-          <div class="reactor-ring ring-one"></div>
-          <div class="reactor-ring ring-two"></div>
-          <div class="reactor-ring ring-three"></div>
-          <div class="reactor-core"><div class="core-glint"></div></div>
-          <span class="reactor-point point-left"></span>
-          <span class="reactor-point point-right"></span>
-        </div>
+        <section class="monitor-section">
+          <h2 class="section-title">System Monitoring</h2>
+          <div class="monitor-grid">
+            <div class="monitor-card">
+              <span class="monitor-icon cyan">▦</span>
+              <div><small>AI Engine</small><strong id="engine-monitor">Gemini</strong></div>
+            </div>
+            <div class="monitor-card">
+              <span class="monitor-icon violet">▱</span>
+              <div><small>Model</small><strong>3.6 Flash</strong></div>
+            </div>
+            <div class="monitor-card">
+              <span class="monitor-icon purple">ϟ</span>
+              <div><small>Network</small><strong id="network-monitor">Online</strong></div>
+            </div>
+            <div class="monitor-card">
+              <span class="monitor-icon aqua">∿</span>
+              <div><small>Status</small><strong id="system-status">Ready</strong></div>
+            </div>
+          </div>
+        </section>
+      </aside>
 
-        <aside class="system-card">
-          <div class="card-heading">SYSTEM STATUS <span>•••</span></div>
-          <div class="status-row"><span>POWER CORE</span><b>100%</b></div>
-          <div class="status-row"><span>SYSTEMS</span><b id="system-status">READY</b></div>
-          <div class="status-row"><span>NETWORK</span><b id="network-status">STANDBY</b></div>
-          <div class="status-row"><span>VOICE MODULE</span><b id="voice-status">READY</b></div>
-        </aside>
-      </section>
+      <section class="right-column">
+        <section class="quick-section">
+          <h2 class="section-title">Quick Commands</h2>
+          <div class="quick-grid">
+            <button class="quick-card" id="quick-weather" type="button">
+              <span class="quick-icon">☁</span>
+              <span><strong>Weather Report</strong><small>Get current weather conditions</small></span>
+            </button>
+            <button class="quick-card" id="quick-time" type="button">
+              <span class="quick-icon">◷</span>
+              <span><strong>Current Time</strong><small>Check the time</small></span>
+            </button>
+            <button class="quick-card" id="quick-search" type="button">
+              <span class="quick-icon">⌕</span>
+              <span><strong>Web Search</strong><small>Ask J.A.R.V.I.S. to research a topic</small></span>
+            </button>
+            <button class="quick-card" id="quick-status" type="button">
+              <span class="quick-icon">▤</span>
+              <span><strong>System Status</strong><small>Check assistant diagnostics</small></span>
+            </button>
+          </div>
+        </section>
 
-      <section class="lower-hud">
-        <div class="metrics">
-          <div><small>AI ENGINE</small><strong>GEMINI</strong></div>
-          <div><small>MODEL</small><strong>3.6 FLASH</strong></div>
-          <div><small>MEMORY</small><strong>ACTIVE</strong></div>
-        </div>
+        <section class="conversation panel">
+          <div class="conversation-heading">
+            <h2 class="section-title">Conversation History</h2>
+            <button id="clear-btn" class="clear-button" type="button" title="Clear conversation">Clear</button>
+          </div>
+          <div id="chat" class="chat-window" aria-live="polite">
+            <div class="msg ai">Good evening, sir. Jarvis at your service. How may I assist you today?</div>
+          </div>
+        </section>
 
-        <div class="waveform" aria-hidden="true">
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-        </div>
+        <section class="command-panel panel">
+          <input id="msg" type="text" placeholder="Type a command or use voice..." autocomplete="off" aria-label="Type a command">
+          <button id="send" class="send-button" type="button" aria-label="Send message">➤</button>
+          <button id="cam-btn" class="camera-button" type="button" aria-label="Attach an image" title="Attach image">▧</button>
+          <input id="img-input" type="file" accept="image/*" capture="environment" hidden>
+        </section>
 
-        <div class="connection"><span id="connection-label">CONNECTED</span><i></i></div>
-      </section>
-
-      <section class="assistant-console">
-        <div class="console-heading">
-          <span>COMMUNICATION INTERFACE</span>
-          <button id="clear-btn" class="icon-button" type="button" title="Clear conversation">⌫</button>
+        <div class="bottom-controls">
+          <button id="wake-btn" class="wake-button" type="button"><span class="wake-led"></span><span id="wake-status">WAKE: OFF</span></button>
+          <span class="bottom-note">PERSONAL AI ASSISTANT <span>•</span> READY TO HELP</span>
         </div>
-        <div id="chat" class="chat-window" aria-live="polite">
-          <div class="msg ai">J.A.R.V.I.S.: Systems online. How may I assist you?</div>
-        </div>
-        <div class="command-row">
-          <input id="msg" type="text" autocomplete="off" placeholder="Enter a command for J.A.R.V.I.S..." aria-label="Message JARVIS">
-          <button id="send" class="execute-button" type="button">EXECUTE <span>↗</span></button>
-          <button id="cam-btn" class="tool-button" type="button" aria-label="Attach image">▧</button>
-        </div>
-        <div class="secondary-controls">
-          <button id="wake-btn" class="text-control" type="button"><span class="tiny-led"></span><span id="wake-status">WAKE: OFF</span></button>
-          <span class="hint">VOICE &amp; IMAGE ASSISTANT</span>
-        </div>
-        <input id="img-input" type="file" accept="image/*" capture="environment" hidden>
       </section>
     </main>
-
-    <footer class="footer-line">
-      <span>J.A.R.V.I.S. PERSONAL AI SYSTEM</span>
-      <span>BUILT BY YOU · POWERED BY INTELLIGENCE</span>
-    </footer>
+    <footer class="footer"><span>J.A.R.V.I.S. INTERFACE</span><span>POWERED BY INTELLIGENCE</span></footer>
   </div>
 
   <script>
-    // Decorative clock and connection indicator.
-    function updateJarvisClock() {
+    // Quick-command helpers. These use the same input/send controls as the main chat.
+    const jarvisInput = document.getElementById("msg");
+    const jarvisSend = document.getElementById("send");
+    function runQuickCommand(command) {
+      jarvisInput.value = command;
+      jarvisSend.click();
+    }
+    document.getElementById("quick-weather").addEventListener("click", () => {
+      const city = prompt("Enter your city for the weather report:");
+      if (city && city.trim()) runQuickCommand("Weather in " + city.trim());
+    });
+    document.getElementById("quick-time").addEventListener("click", () => {
       const now = new Date();
-      const day = document.getElementById("current-day");
-      const time = document.getElementById("current-time");
-      const period = document.getElementById("current-period");
-      if (day) day.textContent = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
-      if (time) time.textContent = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).replace(/\s?(AM|PM)/i, "");
-      if (period) period.textContent = now.toLocaleTimeString("en-IN", { hour: "2-digit", hour12: true }).slice(-2).toUpperCase();
-    }
-    updateJarvisClock();
-    setInterval(updateJarvisClock, 30000);
-    if (navigator.onLine) {
-      document.getElementById("network-status").textContent = "ONLINE";
-    } else {
-      document.getElementById("network-status").textContent = "OFFLINE";
-      document.getElementById("connection-label").textContent = "DISCONNECTED";
-    }
+      runQuickCommand("What is the current time and date? " + now.toLocaleString());
+    });
+    document.getElementById("quick-search").addEventListener("click", () => {
+      const topic = prompt("What topic would you like J.A.R.V.I.S. to research?");
+      if (topic && topic.trim()) runQuickCommand("Research this topic: " + topic.trim());
+    });
+    document.getElementById("quick-status").addEventListener("click", () => {
+      runQuickCommand("Run a system status check and explain which assistant features are ready.");
+    });
+    document.getElementById("sound-toggle").addEventListener("click", () => {
+      const enabled = document.getElementById("sound-toggle").classList.toggle("selected");
+      document.getElementById("sound-toggle").title = enabled ? "Sound indicator selected" : "Sound indicator";
+    });
+    document.getElementById("settings-toggle").addEventListener("click", () => {
+      alert("J.A.R.V.I.S. settings: microphone and camera permissions are managed in your browser settings.");
+    });
+    document.getElementById("power-toggle").addEventListener("click", () => {
+      if (confirm("Clear the current J.A.R.V.I.S. session display?")) {
+        document.getElementById("clear-btn").click();
+      }
+    });
     window.addEventListener("online", () => {
-      document.getElementById("network-status").textContent = "ONLINE";
-      document.getElementById("connection-label").textContent = "CONNECTED";
+      document.getElementById("network-monitor").textContent = "Online";
     });
     window.addEventListener("offline", () => {
-      document.getElementById("network-status").textContent = "OFFLINE";
-      document.getElementById("connection-label").textContent = "DISCONNECTED";
+      document.getElementById("network-monitor").textContent = "Offline";
     });
+    document.getElementById("network-monitor").textContent = navigator.onLine ? "Online" : "Offline";
   </script>
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=8"></script>
 </body>
 </html>
