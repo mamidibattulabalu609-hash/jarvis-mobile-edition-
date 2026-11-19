@@ -2,24 +2,28 @@
 /* ==========================================
    J.A.R.V.I.S. AI ASSISTANT
    Gemini 3.8 Flash
-   Streaming + Auto Retry + Backup Model
+   Fast Streaming + Auto Retry + Backup
    Chat + Image + Voice + Memory
 ========================================== */
 
-// ===== 1. CONFIGURATION =====
+// 1. CONFIGURATION
 
 const CONFIG = {
   MODEL: "gemini-3.8-flash",
   FALLBACK_MODEL: "gemini-3.5-flash-lite",
+
   API_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
+
   HISTORY_KEY: "jarvis_chat_history",
   KEY_NAME: "jarvis_key",
-  MAX_HISTORY: 12,
+
+  MAX_HISTORY: 24,
   MAX_OUTPUT_TOKENS: 512,
-  RETRIES: 3
+  RETRIES: 2,
+  TIMEOUT: 90000
 };
 
-// ===== 2. API KEY =====
+// 2. API KEY
 
 let API_KEY = localStorage.getItem(CONFIG.KEY_NAME);
 
@@ -32,7 +36,7 @@ if (!API_KEY) {
   }
 }
 
-// ===== 3. HTML ELEMENTS =====
+// 3. HTML ELEMENTS
 
 const chat = document.getElementById("chat");
 const input = document.getElementById("msg");
@@ -42,7 +46,7 @@ const camBtn = document.getElementById("cam-btn");
 const imgInput = document.getElementById("img-input");
 const clearBtn = document.getElementById("clear-btn");
 
-// ===== 4. APP STATE =====
+// 4. APP STATE
 
 let history = [];
 let selectedImage = null;
@@ -50,7 +54,7 @@ let isBusy = false;
 let recognition = null;
 let isListening = false;
 
-// ===== 5. LOAD MEMORY =====
+// 5. LOAD MEMORY
 
 try {
   const saved = JSON.parse(
@@ -58,13 +62,22 @@ try {
   );
 
   if (Array.isArray(saved)) {
-    history = saved;
+    history = saved.filter(item =>
+      ["user", "model"].includes(item.role) &&
+      Array.isArray(item.parts) &&
+      item.parts.some(p => typeof p.text === "string")
+    ).map(item => ({
+      role: item.role,
+      parts: item.parts
+        .filter(p => typeof p.text === "string")
+        .map(p => ({ text: p.text }))
+    }));
   }
 } catch (error) {
   history = [];
 }
 
-// ===== 6. CHAT DISPLAY =====
+// 6. CHAT DISPLAY
 
 function addMessage(message, sender) {
   const div = document.createElement("div");
@@ -78,10 +91,10 @@ function addMessage(message, sender) {
   return div;
 }
 
-// ===== 7. SAVE MEMORY =====
+// 7. SAVE MEMORY
 
 function saveHistory() {
-  history = history.slice(-CONFIG.MAX_HISTORY * 2);
+  history = history.slice(-CONFIG.MAX_HISTORY);
 
   try {
     localStorage.setItem(
@@ -89,16 +102,16 @@ function saveHistory() {
       JSON.stringify(history)
     );
   } catch (error) {
-    console.error("Memory save error:", error);
+    console.error("Memory error:", error);
   }
 }
 
-// ===== 8. RESTORE CHAT =====
+// 8. RESTORE CHAT
 
 function restoreChat() {
   chat.innerHTML = "";
 
-  if (history.length === 0) {
+  if (!history.length) {
     addMessage(
       "J.A.R.V.I.S: Systems online. How may I assist you?",
       "ai"
@@ -107,20 +120,20 @@ function restoreChat() {
   }
 
   history.forEach(item => {
-    const text = (item.parts || [])
-      .map(part => part.text || "")
+    const message = item.parts
+      .map(p => p.text || "")
       .join("");
 
-    if (!text) return;
-
-    addMessage(
-      (item.role === "user" ? "YOU: " : "J.A.R.V.I.S: ") + text,
-      item.role === "user" ? "user" : "ai"
-    );
+    if (message) {
+      addMessage(
+        (item.role === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message,
+        item.role === "user" ? "user" : "ai"
+      );
+    }
   });
 }
 
-// ===== 9. IMAGE UPLOAD =====
+// 9. IMAGE UPLOAD
 
 if (camBtn && imgInput) {
   camBtn.addEventListener("click", () => {
@@ -140,7 +153,7 @@ if (imgInput) {
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      addMessage("Please choose an image smaller than 10 MB.", "ai");
+      addMessage("Image must be smaller than 10 MB.", "ai");
       imgInput.value = "";
       return;
     }
@@ -154,7 +167,7 @@ if (imgInput) {
         };
 
         reader.onerror = () => reject(
-          new Error("Could not read image.")
+          new Error("Image reading failed.")
         );
 
         reader.readAsDataURL(file);
@@ -168,104 +181,127 @@ if (imgInput) {
       addMessage("Image selected: " + file.name, "ai");
 
     } catch (error) {
-      addMessage("Image upload failed: " + error.message, "ai");
+      addMessage(error.message, "ai");
     }
 
     imgInput.value = "";
   });
 }
 
-// ===== 10. WAIT FUNCTION =====
+// 10. WAIT
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ===== 11. REQUEST WITH AUTO RETRY =====
+// 11. GEMINI CONNECTION
 
-async function requestGemini(contents) {
+async function requestGemini(contents, signal) {
+
   const models = [
     CONFIG.MODEL,
     CONFIG.FALLBACK_MODEL
   ];
 
-  let lastError = "Gemini service is unavailable.";
+  let lastError = "Gemini connection failed.";
 
   for (const model of models) {
 
     for (let attempt = 0; attempt < CONFIG.RETRIES; attempt++) {
 
-      let response;
-
       try {
-        response = await fetch(
-          `${CONFIG.API_URL}${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(API_KEY)}`,
+
+        const response = await fetch(
+          `${CONFIG.API_URL}${model}:streamGenerateContent?alt=sse`,
           {
             method: "POST",
+
             headers: {
-              "Content-Type": "application/json"
+              "Content-Type": "application/json",
+              "x-goog-api-key": API_KEY
             },
+
+            signal,
+
             body: JSON.stringify({
               contents,
+
               generationConfig: {
                 temperature: 0.5,
-                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS
+                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS,
+
+                thinkingConfig: {
+                  thinkingLevel: "low"
+                }
               }
             })
           }
         );
 
-      } catch (error) {
-        lastError = "Network connection failed.";
-        if (attempt < CONFIG.RETRIES - 1) {
-          await wait(1500 * (2 ** attempt));
-          continue;
+        if (response.ok) {
+          return response;
         }
-        break;
-      }
 
-      if (response.ok) {
-        return response;
-      }
+        const errorData = await response.json().catch(() => ({}));
 
-      let errorData = {};
+        lastError =
+          errorData.error?.message ||
+          `HTTP Error ${response.status}`;
 
-      try {
-        errorData = await response.json();
-      } catch (error) {}
+        // Retry temporary errors.
 
-      lastError =
-        errorData.error?.message ||
-        `Gemini API error: ${response.status}`;
+        const temporary =
+          response.status === 429 ||
+          response.status >= 500;
 
-      // Retry temporary server or rate-limit errors.
-      const temporary =
-        response.status === 429 ||
-        response.status === 500 ||
-        response.status === 502 ||
-        response.status === 503 ||
-        response.status === 504;
+        // Try backup model if primary is not found.
 
-      if (!temporary) {
-        throw new Error(lastError);
-      }
+        if (response.status === 404) {
+          console.warn("Model not found:", model);
+          break;
+        }
 
-      if (attempt < CONFIG.RETRIES - 1) {
-        await wait(1500 * (2 ** attempt));
+        if (!temporary) {
+          throw new Error(lastError);
+        }
+
+        if (attempt < CONFIG.RETRIES - 1) {
+          await wait(1000 * (attempt + 1));
+        }
+
+      } catch (error) {
+
+        if (signal.aborted) {
+          throw new Error("Request timed out.");
+        }
+
+        if (
+          error.message !== lastError &&
+          !(error instanceof TypeError)
+        ) {
+          throw error;
+        }
+
+        lastError = "Network connection failed.";
+
+        if (attempt < CONFIG.RETRIES - 1) {
+          await wait(1000 * (attempt + 1));
+        }
       }
     }
 
-    console.warn("Model unavailable:", model);
+    console.warn("Trying backup model:", model);
   }
 
   throw new Error(lastError);
 }
 
-// ===== 12. READ STREAMING RESPONSE =====
+// 12. READ STREAMING RESPONSE
 
 async function readGeminiStream(response, onUpdate) {
+
   if (!response.body) {
-    throw new Error("Streaming is not supported by this browser.");
+    throw new Error("Streaming is not supported.");
   }
 
   const reader = response.body.getReader();
@@ -275,9 +311,11 @@ async function readGeminiStream(response, onUpdate) {
   let answer = "";
 
   function processEvent(event) {
+
     const lines = event.split(/\r?\n/);
 
     for (const line of lines) {
+
       if (!line.startsWith("data:")) continue;
 
       const jsonText = line.slice(5).trim();
@@ -287,14 +325,14 @@ async function readGeminiStream(response, onUpdate) {
       const data = JSON.parse(jsonText);
 
       if (data.error) {
-        throw new Error(
-          data.error.message || "Gemini streaming error."
-        );
+        throw new Error(data.error.message);
       }
 
-      const chunk = data.candidates?.[0]?.content?.parts
-        ?.map(part => part.text || "")
-        .join("") || "";
+      const chunk = (
+        data.candidates?.[0]?.content?.parts || []
+      )
+        .map(part => part.text || "")
+        .join("");
 
       if (chunk) {
         answer += chunk;
@@ -304,7 +342,9 @@ async function readGeminiStream(response, onUpdate) {
   }
 
   try {
+
     while (true) {
+
       const { value, done } = await reader.read();
 
       if (done) break;
@@ -327,6 +367,7 @@ async function readGeminiStream(response, onUpdate) {
     }
 
   } catch (error) {
+
     await reader.cancel().catch(() => {});
     throw error;
   }
@@ -338,19 +379,20 @@ async function readGeminiStream(response, onUpdate) {
   return answer;
 }
 
-// ===== 13. ASK GEMINI =====
+// 13. ASK GEMINI
 
-async function askGemini(question, image, onUpdate) {
+async function askGemini(question, image, onUpdate, signal) {
+
   if (!API_KEY) {
-    throw new Error("Gemini API key is missing.");
+    throw new Error("API key is missing.");
   }
 
   const parts = [{ text: question }];
 
   if (image) {
     parts.push({
-      inline_data: {
-        mime_type: image.mimeType,
+      inlineData: {
+        mimeType: image.mimeType,
         data: image.data
       }
     });
@@ -364,17 +406,19 @@ async function askGemini(question, image, onUpdate) {
     }
   ];
 
-  const response = await requestGemini(contents);
+  const response = await requestGemini(contents, signal);
 
   const answer = await readGeminiStream(
     response,
     onUpdate
   );
 
+  // Save text only, not large image data.
+
   history.push(
     {
       role: "user",
-      parts
+      parts: [{ text: question }]
     },
     {
       role: "model",
@@ -387,10 +431,13 @@ async function askGemini(question, image, onUpdate) {
   return answer;
 }
 
-// ===== 14. VOICE OUTPUT =====
+// 14. VOICE OUTPUT
 
 function speak(text) {
-  if (!("speechSynthesis" in window)) return;
+
+  if (!("speechSynthesis" in window)) {
+    return;
+  }
 
   window.speechSynthesis.cancel();
 
@@ -403,9 +450,10 @@ function speak(text) {
   window.speechSynthesis.speak(speech);
 }
 
-// ===== 15. SEND MESSAGE =====
+// 15. SEND MESSAGE
 
 async function sendMessage() {
+
   const question = input.value.trim();
 
   if ((!question && !selectedImage) || isBusy) return;
@@ -422,8 +470,10 @@ async function sendMessage() {
   const image = selectedImage;
   selectedImage = null;
 
+  const promptText = question || "Describe this image.";
+
   addMessage(
-    question || "Please analyse this image.",
+    question || "Image uploaded.",
     "user"
   );
 
@@ -434,14 +484,25 @@ async function sendMessage() {
     "ai"
   );
 
+  const controller = new AbortController();
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    CONFIG.TIMEOUT
+  );
+
   try {
+
     const answer = await askGemini(
-      question || "Describe this image.",
+      promptText,
       image,
+
       text => {
         loading.textContent = "J.A.R.V.I.S: " + text;
         chat.scrollTop = chat.scrollHeight;
-      }
+      },
+
+      controller.signal
     );
 
     loading.textContent = "J.A.R.V.I.S: " + answer;
@@ -449,12 +510,16 @@ async function sendMessage() {
     speak(answer);
 
   } catch (error) {
+
     loading.textContent =
       "J.A.R.V.I.S Error: " + error.message;
 
     console.error("JARVIS ERROR:", error);
 
   } finally {
+
+    clearTimeout(timeout);
+
     isBusy = false;
 
     if (sendBtn) sendBtn.disabled = false;
@@ -463,30 +528,33 @@ async function sendMessage() {
   }
 }
 
-// ===== 16. SEND BUTTON =====
+// 16. SEND BUTTON
 
 if (sendBtn) {
   sendBtn.addEventListener("click", sendMessage);
 }
 
-// ===== 17. ENTER KEY =====
+// 17. ENTER KEY
 
 if (input) {
   input.addEventListener("keydown", event => {
+
     if (event.key === "Enter" && !event.shiftKey) {
+
       event.preventDefault();
       sendMessage();
     }
   });
 }
 
-// ===== 18. VOICE INPUT =====
+// 18. VOICE INPUT
 
 const SpeechRecognition =
   window.SpeechRecognition ||
   window.webkitSpeechRecognition;
 
 if (SpeechRecognition) {
+
   recognition = new SpeechRecognition();
 
   recognition.lang = "en-IN";
@@ -494,20 +562,24 @@ if (SpeechRecognition) {
   recognition.interimResults = false;
 
   recognition.onstart = () => {
+
     isListening = true;
 
     if (micBtn) micBtn.textContent = "🔴";
   };
 
   recognition.onresult = event => {
+
     const spokenText =
       event.results[0][0].transcript;
 
     input.value = spokenText;
+
     sendMessage();
   };
 
   recognition.onerror = event => {
+
     addMessage(
       "Voice input error: " + event.error,
       "ai"
@@ -515,21 +587,26 @@ if (SpeechRecognition) {
   };
 
   recognition.onend = () => {
+
     isListening = false;
 
     if (micBtn) micBtn.textContent = "🎤";
   };
 }
 
-// ===== 19. MICROPHONE BUTTON =====
+// 19. MICROPHONE BUTTON
 
 if (micBtn) {
+
   micBtn.addEventListener("click", () => {
+
     if (!recognition) {
+
       addMessage(
         "Voice recognition is not supported in this browser.",
         "ai"
       );
+
       return;
     }
 
@@ -546,10 +623,12 @@ if (micBtn) {
   });
 }
 
-// ===== 20. CLEAR MEMORY =====
+// 20. CLEAR MEMORY
 
 if (clearBtn) {
+
   clearBtn.addEventListener("click", () => {
+
     history = [];
 
     localStorage.removeItem(CONFIG.HISTORY_KEY);
@@ -571,13 +650,14 @@ if (clearBtn) {
   });
 }
 
-// ===== 21. START JARVIS =====
+// 21. START JARVIS
 
 restoreChat();
 
 console.log("J.A.R.V.I.S SYSTEM ONLINE");
 console.log("PRIMARY MODEL:", CONFIG.MODEL);
 console.log("BACKUP MODEL:", CONFIG.FALLBACK_MODEL);
+
 
 
 
