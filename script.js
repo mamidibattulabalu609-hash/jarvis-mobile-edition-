@@ -1,8 +1,8 @@
 
 /* =========================================
-   J.A.R.V.I.S AI ASSISTANT
-   Gemini + Memory + Voice + Vision
-   Corrected Version
+   J.A.R.V.I.S 2.0
+   ULTRA FAST AI ASSISTANT
+   Gemini + Streaming + Memory + Voice + Vision
 ========================================= */
 
 // 1. API KEY
@@ -19,11 +19,19 @@ if (!API_KEY) {
 
 // 2. GEMINI MODELS
 const MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.5-flash-lite"
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash"
 ];
 
-// 3. HTML ELEMENTS
+// 3. SETTINGS
+const SETTINGS = {
+    maxOutputTokens: 512,
+    memoryLimit: 40,
+    historyLimit: 8,
+    language: "en-IN"
+};
+
+// 4. HTML ELEMENTS
 const chat = document.getElementById("chat");
 const input = document.getElementById("msg");
 const sendBtn = document.getElementById("send");
@@ -32,7 +40,9 @@ const clearBtn = document.getElementById("clear-btn");
 const camBtn = document.getElementById("cam-btn");
 const imgInput = document.getElementById("img-input");
 
-// 4. MEMORY
+let isBusy = false;
+
+// 5. MEMORY SYSTEM
 let MEMORY = [];
 
 try {
@@ -45,7 +55,7 @@ try {
             m &&
             ["user", "model"].includes(m.role) &&
             typeof m.text === "string"
-          )
+        ).slice(-SETTINGS.memoryLimit)
         : [];
 
 } catch {
@@ -56,16 +66,26 @@ function saveMemory() {
     try {
         localStorage.setItem(
             "jarvis_memory",
-            JSON.stringify(MEMORY.slice(-50))
+            JSON.stringify(MEMORY.slice(-SETTINGS.memoryLimit))
         );
     } catch (error) {
-        console.error("Memory save error:", error);
+        console.error("Memory error:", error);
     }
 }
 
-// 5. CHAT DISPLAY
-function add(text, type) {
+function remember(question, answer) {
+    MEMORY.push(
+        { role: "user", text: question },
+        { role: "model", text: answer }
+    );
 
+    MEMORY = MEMORY.slice(-SETTINGS.memoryLimit);
+
+    saveMemory();
+}
+
+// 6. DISPLAY CHAT
+function add(text, type) {
     const div = document.createElement("div");
 
     div.className = "msg " + type;
@@ -77,7 +97,7 @@ function add(text, type) {
     return div;
 }
 
-// DISPLAY OLD CHAT
+// LOAD OLD CHAT
 MEMORY.forEach(m => {
     add(
         (m.role === "user" ? "YOU: " : "J.A.R.V.I.S: ") + m.text,
@@ -85,108 +105,206 @@ MEMORY.forEach(m => {
     );
 });
 
-// 6. DELAY FUNCTION
-function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+// 7. BUTTON STATUS
+function setBusy(value) {
+    isBusy = value;
+
+    if (sendBtn) {
+        sendBtn.disabled = value;
+        sendBtn.innerText = value ? "WAIT..." : "SEND";
+    }
 }
 
-// 7. GEMINI API ENGINE
-async function requestGemini(contents, imageMode = false) {
+// 8. ERROR HANDLING
+function getErrorMessage(error) {
+    if (!navigator.onLine) {
+        return "Internet connection unavailable.";
+    }
+
+    if (error.status === 400) {
+        return "Invalid Gemini request.";
+    }
+
+    if ([401, 403].includes(error.status)) {
+        return "API key invalid or API access denied.";
+    }
+
+    if (error.status === 404) {
+        return "Gemini model not found.";
+    }
+
+    if (error.status === 429) {
+        return "API quota or rate limit reached.";
+    }
+
+    if ([500, 502, 503, 504].includes(error.status)) {
+        return "Gemini server is busy. Try again.";
+    }
+
+    return error.message || "Unknown error.";
+}
+
+// 9. STREAMING GEMINI ENGINE
+async function requestGemini(contents, onUpdate) {
 
     if (!API_KEY) {
-        throw new Error("API key missing. Reload and enter your key.");
+        throw new Error("Gemini API key missing.");
     }
 
     let lastError;
 
     for (const model of MODELS) {
 
-        // Retry temporary server overloads
-        for (let attempt = 0; attempt < 2; attempt++) {
+        let receivedText = "";
 
-            try {
+        try {
 
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "x-goog-api-key": API_KEY
-                        },
-                        body: JSON.stringify({
-                            contents,
-                            generationConfig: {
-                                maxOutputTokens: 2048
-                            }
-                        })
+            const url =
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+
+            const response = await fetch(url, {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": API_KEY
+                },
+
+                body: JSON.stringify({
+                    contents,
+
+                    generationConfig: {
+                        maxOutputTokens: SETTINGS.maxOutputTokens,
+                        temperature: 0.7
                     }
+                })
+            });
+
+            if (!response.ok) {
+
+                let data = {};
+
+                try {
+                    data = await response.json();
+                } catch {}
+
+                const error = new Error(
+                    data.error?.message ||
+                    `Gemini error: ${response.status}`
                 );
 
-                const data = await response.json();
+                error.status = response.status;
 
-                if (!response.ok) {
-
-                    const error = new Error(
-                        data.error?.message ||
-                        `Gemini error: ${response.status}`
-                    );
-
-                    error.status = response.status;
-
-                    throw error;
-                }
-
-                const candidate = data.candidates?.[0];
-
-                const reply = candidate?.content?.parts
-                    ?.map(p => p.text || "")
-                    .join("")
-                    .trim();
-
-                if (!reply) {
-                    throw new Error(
-                        candidate?.finishReason
-                            ? "Gemini stopped: " + candidate.finishReason
-                            : "Gemini returned an empty response."
-                    );
-                }
-
-                console.log("J.A.R.V.I.S connected:", model);
-
-                return reply;
-
-            } catch (error) {
-
-                lastError = error;
-
-                console.error(model, error);
-
-                // Invalid key or invalid request: stop
-                if ([400, 401, 403].includes(error.status)) {
-                    throw error;
-                }
-
-                // Retry temporary overload
-                if (
-                    [429, 500, 502, 503, 504].includes(error.status)
-                    && attempt === 0
-                ) {
-                    await wait(1500);
-                    continue;
-                }
-
-                // Try next model
-                break;
+                throw error;
             }
+
+            if (!response.body) {
+                throw new Error("Streaming is not supported by this browser.");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            let buffer = "";
+
+            async function processLine(line) {
+
+                line = line.trim();
+
+                if (!line.startsWith("data:")) return;
+
+                const jsonText = line.slice(5).trim();
+
+                if (!jsonText || jsonText === "[DONE]") return;
+
+                let data;
+
+                try {
+                    data = JSON.parse(jsonText);
+                } catch {
+                    return;
+                }
+
+                if (data.error) {
+                    throw new Error(data.error.message || "Streaming error.");
+                }
+
+                const parts =
+                    data.candidates?.[0]?.content?.parts || [];
+
+                for (const part of parts) {
+                    if (typeof part.text === "string") {
+                        receivedText += part.text;
+
+                        if (onUpdate) {
+                            onUpdate(receivedText);
+                        }
+                    }
+                }
+            }
+
+            while (true) {
+
+                const { value, done } = await reader.read();
+
+                if (done) break;
+
+                buffer += decoder.decode(value, {
+                    stream: true
+                });
+
+                const lines = buffer.split("\n");
+
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    await processLine(line);
+                }
+            }
+
+            buffer += decoder.decode();
+
+            if (buffer.trim()) {
+                await processLine(buffer);
+            }
+
+            if (!receivedText.trim()) {
+                throw new Error("Gemini returned an empty response.");
+            }
+
+            console.log("Connected to Gemini:", model);
+
+            return receivedText.trim();
+
+        } catch (error) {
+
+            lastError = error;
+
+            console.error(model, error);
+
+            // Do not retry invalid API requests.
+            if ([400, 401, 403].includes(error.status)) {
+                throw error;
+            }
+
+            // Avoid repeating a partially received response.
+            if (receivedText.length > 0) {
+                throw error;
+            }
+
+            // Try the next model.
         }
     }
 
     throw lastError || new Error("All Gemini models failed.");
 }
 
-// 8. NORMAL CHAT
+// 10. NORMAL AI CHAT
 async function askGemini(question) {
+
+    if (isBusy) return;
+
+    setBusy(true);
 
     const message = add(
         "J.A.R.V.I.S: Thinking...",
@@ -195,26 +313,27 @@ async function askGemini(question) {
 
     try {
 
-        const history = MEMORY.slice(-12).map(m => ({
-            role: m.role,
-            parts: [{ text: m.text }]
-        }));
+        // Send only recent conversation history.
+        const history = MEMORY.slice(-SETTINGS.historyLimit)
+            .map(m => ({
+                role: m.role,
+                parts: [{ text: m.text }]
+            }));
 
         history.push({
             role: "user",
             parts: [{ text: question }]
         });
 
-        const reply = await requestGemini(history);
-
-        MEMORY.push(
-            { role: "user", text: question },
-            { role: "model", text: reply }
+        const reply = await requestGemini(
+            history,
+            text => {
+                message.innerText = "J.A.R.V.I.S: " + text;
+                chat.scrollTop = chat.scrollHeight;
+            }
         );
 
-        MEMORY = MEMORY.slice(-50);
-
-        saveMemory();
+        remember(question, reply);
 
         message.innerText = "J.A.R.V.I.S: " + reply;
 
@@ -226,43 +345,18 @@ async function askGemini(question) {
             "J.A.R.V.I.S ERROR: " + getErrorMessage(error);
 
         console.error(error);
+
+    } finally {
+        setBusy(false);
     }
 }
 
-// 9. ERROR MESSAGES
-function getErrorMessage(error) {
-
-    if (!navigator.onLine) {
-        return "Internet connection unavailable.";
-    }
-
-    if (error.status === 400) {
-        return "Invalid request. Check your API request.";
-    }
-
-    if (error.status === 401 || error.status === 403) {
-        return "API key invalid or API access denied. Check your Gemini API settings.";
-    }
-
-    if (error.status === 404) {
-        return "Gemini model not found. Check the model name.";
-    }
-
-    if (error.status === 429) {
-        return "Gemini quota or rate limit reached. Please try later.";
-    }
-
-    if ([500, 502, 503, 504].includes(error.status)) {
-        return "Gemini servers are busy. Please try again later.";
-    }
-
-    return error.message || "Unknown error.";
-}
-
-// 10. IMAGE RECOGNITION
+// 11. IMAGE RECOGNITION
 if (camBtn && imgInput) {
 
-    camBtn.onclick = () => imgInput.click();
+    camBtn.onclick = () => {
+        imgInput.click();
+    };
 
     imgInput.onchange = async () => {
 
@@ -278,6 +372,11 @@ if (camBtn && imgInput) {
 
         if (file.size > 10 * 1024 * 1024) {
             alert("Image must be smaller than 10 MB.");
+            imgInput.value = "";
+            return;
+        }
+
+        if (isBusy) {
             imgInput.value = "";
             return;
         }
@@ -305,10 +404,12 @@ if (camBtn && imgInput) {
                 );
 
             } catch (error) {
-                add("IMAGE ERROR: " + error.message, "ai");
-            }
 
-            imgInput.value = "";
+                add("IMAGE ERROR: " + error.message, "ai");
+
+            } finally {
+                imgInput.value = "";
+            }
         };
 
         reader.onerror = () => {
@@ -320,8 +421,12 @@ if (camBtn && imgInput) {
     };
 }
 
-// 11. VISION ENGINE
+// 12. VISION ENGINE
 async function askVision(base64, mime, question) {
+
+    if (isBusy) return;
+
+    setBusy(true);
 
     const message = add(
         "J.A.R.V.I.S: Analyzing image...",
@@ -330,11 +435,13 @@ async function askVision(base64, mime, question) {
 
     try {
 
-        const reply = await requestGemini([
-            {
+        const reply = await requestGemini(
+            [{
                 role: "user",
+
                 parts: [
                     { text: question },
+
                     {
                         inlineData: {
                             mimeType: mime,
@@ -342,17 +449,14 @@ async function askVision(base64, mime, question) {
                         }
                     }
                 ]
-            }
-        ], true);
+            }],
 
-        MEMORY.push(
-            { role: "user", text: "[Image] " + question },
-            { role: "model", text: reply }
+            text => {
+                message.innerText = "J.A.R.V.I.S: " + text;
+            }
         );
 
-        MEMORY = MEMORY.slice(-50);
-
-        saveMemory();
+        remember("[Image] " + question, reply);
 
         message.innerText = "J.A.R.V.I.S: " + reply;
 
@@ -364,10 +468,13 @@ async function askVision(base64, mime, question) {
             "J.A.R.V.I.S ERROR: " + getErrorMessage(error);
 
         console.error(error);
+
+    } finally {
+        setBusy(false);
     }
 }
 
-// 12. VOICE INPUT
+// 13. VOICE INPUT
 const SR =
     window.SpeechRecognition ||
     window.webkitSpeechRecognition;
@@ -378,7 +485,7 @@ if (SR && micBtn) {
 
     recognition = new SR();
 
-    recognition.lang = "en-IN";
+    recognition.lang = SETTINGS.language;
     recognition.continuous = false;
     recognition.interimResults = false;
 
@@ -400,7 +507,7 @@ if (SR && micBtn) {
 
     recognition.onerror = event => {
 
-        console.error("Voice input:", event.error);
+        console.error("Voice error:", event.error);
 
         add(
             "VOICE ERROR: " + event.error,
@@ -413,6 +520,8 @@ if (SR && micBtn) {
     };
 
     micBtn.onclick = () => {
+
+        if (isBusy) return;
 
         try {
             recognition.start();
@@ -428,7 +537,7 @@ if (SR && micBtn) {
     };
 }
 
-// 13. VOICE OUTPUT
+// 14. VOICE OUTPUT
 let voices = [];
 
 function loadVoices() {
@@ -447,10 +556,7 @@ if ("speechSynthesis" in window) {
 
 function speak(text) {
 
-    if (!("speechSynthesis" in window)) {
-        console.warn("Speech output not supported.");
-        return;
-    }
+    if (!("speechSynthesis" in window)) return;
 
     window.speechSynthesis.cancel();
 
@@ -458,11 +564,13 @@ function speak(text) {
         .replace(/[*#`_]/g, "")
         .trim();
 
+    if (!cleanText) return;
+
     const utterance =
         new SpeechSynthesisUtterance(cleanText);
 
-    utterance.lang = "en-IN";
-    utterance.rate = 1;
+    utterance.lang = SETTINGS.language;
+    utterance.rate = 1.05;
     utterance.pitch = 0.9;
     utterance.volume = 1;
 
@@ -479,24 +587,24 @@ function speak(text) {
     window.speechSynthesis.speak(utterance);
 }
 
-// 14. SEND BUTTON
+// 15. SEND BUTTON
 if (sendBtn && input) {
 
     sendBtn.onclick = () => {
 
-        const text = input.value.trim();
+        const question = input.value.trim();
 
-        if (!text) return;
+        if (!question || isBusy) return;
 
-        add("YOU: " + text, "user");
+        add("YOU: " + question, "user");
 
         input.value = "";
 
-        askGemini(text);
+        askGemini(question);
     };
 }
 
-// 15. ENTER TO SEND
+// 16. ENTER TO SEND
 if (input && sendBtn) {
 
     input.addEventListener("keydown", event => {
@@ -511,10 +619,12 @@ if (input && sendBtn) {
     });
 }
 
-// 16. CLEAR MEMORY
+// 17. CLEAR MEMORY
 if (clearBtn) {
 
     clearBtn.onclick = () => {
+
+        if (isBusy) return;
 
         MEMORY = [];
 
@@ -530,8 +640,14 @@ if (clearBtn) {
     };
 }
 
-// 17. SYSTEM STATUS
-console.log("J.A.R.V.I.S SYSTEM INITIALIZED");
+// 18. SYSTEM STATUS
+console.log("--------------------------------");
+console.log("J.A.R.V.I.S 2.0 INITIALIZED");
+console.log("Streaming: ENABLED");
+console.log("Memory: ENABLED");
+console.log("Voice: ENABLED");
+console.log("Vision: ENABLED");
+console.log("--------------------------------");
 
 if (!API_KEY) {
     console.warn("Gemini API key not configured.");
@@ -543,4 +659,4 @@ if (!SR) {
 
 if (!("speechSynthesis" in window)) {
     console.warn("Speech synthesis unavailable.");
-           }
+}
