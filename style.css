@@ -1,4 +1,3 @@
-
 /* =================================
    J.A.R.V.I.S FUTURISTIC INTERFACE
 ================================= */
@@ -278,5 +277,86 @@ button:active {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         scroll-behavior: auto !important;
+    }
+}
+
+
+/* =================================
+   HEADER ACTIONS + ICON BUTTON FIX
+================================= */
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px auto 0;
+}
+
+.ready-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #00ffff;
+    font-size: 11px;
+}
+
+.ready-dot {
+    width: 7px;
+    height: 7px;
+    display: inline-block;
+    border-radius: 50%;
+    background: #00ff66;
+    box-shadow: 0 0 8px #00ff66;
+}
+
+.topbar-actions .icon-button {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    padding: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: #00ffff;
+    border: 1px solid rgba(0, 255, 255, 0.65);
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.topbar-actions .icon-button:hover {
+    background: rgba(0, 255, 255, 0.12);
+    color: #00ffff;
+    box-shadow: 0 0 12px rgba(0, 255, 255, 0.65);
+}
+
+.topbar-actions .icon-button svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#wake-status {
+    color: #888;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .topbar-actions {
+        gap: 7px;
+    }
+
+    .topbar-actions .icon-button {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
     }
 }
