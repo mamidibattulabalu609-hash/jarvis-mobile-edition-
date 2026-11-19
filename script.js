@@ -1,12 +1,12 @@
 /* ==========================================
-   J.A.R.V.I.S PERSONAL AI ASSISTANT
-   GEMINI 3.8 FLASH
-   VOICE + CAMERA + MEMORY + WEATHER
+   J.A.R.V.I.S AI PERSONAL ASSISTANT
+   GEMINI 3.6 FLASH
+   CHAT + VOICE + CAMERA + MEMORY + WEATHER
 ========================================== */
 
 // 1. CONFIGURATION
 
-const MODEL = "gemini-3.8-flash";
+const MODEL = "gemini-3.6-flash";
 
 const API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
@@ -17,9 +17,6 @@ let chatHistory = [];
 let busy = false;
 let recognition = null;
 let isListening = false;
-
-const sleep = ms =>
-  new Promise(resolve => setTimeout(resolve, ms));
 
 // 2. HTML ELEMENTS
 
@@ -69,7 +66,7 @@ function addMessage(message, type = "ai") {
   chat.scrollTop = chat.scrollHeight;
 }
 
-// 6. SAVE MEMORY
+// 6. MEMORY
 
 function saveHistory() {
   try {
@@ -89,7 +86,7 @@ function restoreChat() {
 
   chat.innerHTML = "";
 
-  if (chatHistory.length === 0) {
+  if (!chatHistory.length) {
     addMessage(
       "Systems online. How may I assist you?",
       "ai"
@@ -111,30 +108,26 @@ function restoreChat() {
   });
 }
 
-// 7. TEXT TO SPEECH
+// 7. VOICE OUTPUT
 
 function speak(text) {
   if (!("speechSynthesis" in window)) return;
 
   window.speechSynthesis.cancel();
 
-  const utterance =
-    new SpeechSynthesisUtterance(text);
+  const speech = new SpeechSynthesisUtterance(text);
 
-  utterance.lang = "en-IN";
-  utterance.rate = 1;
-  utterance.pitch = 1;
+  speech.lang = "en-IN";
+  speech.rate = 1;
+  speech.pitch = 1;
 
-  utterance.onstart = () =>
-    setStatus("SPEAKING...");
+  speech.onstart = () => setStatus("SPEAKING...");
+  speech.onend = () => setStatus("SYSTEM READY");
 
-  utterance.onend = () =>
-    setStatus("SYSTEM READY");
-
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis.speak(speech);
 }
 
-// 8. SPEECH RECOGNITION
+// 8. VOICE INPUT
 
 function startVoiceInput() {
   const SpeechRecognition =
@@ -166,9 +159,7 @@ function startVoiceInput() {
 
   isListening = true;
 
-  if (micBtn) {
-    micBtn.classList.add("active");
-  }
+  if (micBtn) micBtn.classList.add("active");
 
   setStatus("LISTENING...");
 
@@ -178,9 +169,7 @@ function startVoiceInput() {
 
     stopVoiceInput();
 
-    if (input) {
-      input.value = transcript;
-    }
+    if (input) input.value = transcript;
 
     sendMessage();
   };
@@ -245,16 +234,12 @@ function stopVoiceInput() {
 
 function openCamera() {
   if (!imageInput) {
-    addMessage(
-      "Camera input is missing from HTML.",
-      "ai"
-    );
+    addMessage("Camera input is missing from HTML.", "ai");
     return;
   }
 
   imageInput.accept = "image/*";
   imageInput.setAttribute("capture", "environment");
-
   imageInput.click();
 }
 
@@ -286,16 +271,13 @@ async function processImage() {
   if (!file) return;
 
   if (!file.type.startsWith("image/")) {
-    addMessage("Please select an image.", "ai");
+    addMessage("Please select a valid image.", "ai");
     imageInput.value = "";
     return;
   }
 
   if (file.size > 10 * 1024 * 1024) {
-    addMessage(
-      "Image must be smaller than 10 MB.",
-      "ai"
-    );
+    addMessage("Image must be smaller than 10 MB.", "ai");
     imageInput.value = "";
     return;
   }
@@ -332,9 +314,7 @@ async function getWeather(promptText) {
     /(?:weather|temperature|forecast)\s+(?:in|for|at)\s+([a-zA-Z\s]+?)(?:\s+(?:today|tomorrow|now)|[?.!]|$)/i
   );
 
-  const city = match
-    ? match[1].trim()
-    : "Vijayawada";
+  const city = match ? match[1].trim() : "Vijayawada";
 
   try {
     setStatus("FETCHING WEATHER...");
@@ -436,22 +416,19 @@ async function handleTools(command) {
 
   for (const [cmd, url] of Object.entries(websites)) {
     if (t === cmd) {
-      addMessage("Opening " + cmd.replace("open ", "") + "...", "ai");
       window.location.assign(url);
-      return "__NAVIGATING__";
+      return "Opening " + cmd.replace("open ", "") + "...";
     }
   }
 
   return null;
 }
 
-// 12. GEMINI API
+// 12. GEMINI CONNECTION
 
 async function callGemini(contents) {
   if (!API_KEY) {
-    const enteredKey = prompt(
-      "Enter your Gemini API key:"
-    );
+    const enteredKey = prompt("Enter your Gemini API key:");
 
     if (!enteredKey?.trim()) {
       throw new Error("Gemini API key is required.");
@@ -466,39 +443,36 @@ async function callGemini(contents) {
     let response;
 
     try {
-      response = await fetch(
-        API_URL,
-        {
-          method: "POST",
+      response = await fetch(API_URL, {
+        method: "POST",
 
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": API_KEY
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": API_KEY
+        },
+
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text:
+                "You are J.A.R.V.I.S., a helpful and intelligent personal AI assistant. Reply naturally and clearly."
+            }]
           },
 
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{
-                text:
-                  "You are J.A.R.V.I.S., a helpful, intelligent personal AI assistant. Reply naturally, clearly and concisely."
-              }]
-            },
-
-            contents: contents
-          })
-        }
-      );
+          contents
+        })
+      });
 
     } catch (error) {
       if (attempt < 3) {
         setStatus("RECONNECTING...");
-        await sleep(1000 * attempt);
+        await new Promise(resolve =>
+          setTimeout(resolve, 1000 * attempt)
+        );
         continue;
       }
 
-      throw new Error(
-        "Network connection failed. Check your internet."
-      );
+      throw new Error("Network connection failed.");
     }
 
     const data = await response.json().catch(() => ({}));
@@ -517,11 +491,13 @@ async function callGemini(contents) {
     }
 
     if (
-      (response.status === 429 || response.status === 503) &&
+      [429, 503].includes(response.status) &&
       attempt < 3
     ) {
       setStatus("AI BUSY - RETRYING...");
-      await sleep(1000 * attempt);
+      await new Promise(resolve =>
+        setTimeout(resolve, 1000 * attempt)
+      );
       continue;
     }
 
@@ -534,7 +510,7 @@ async function callGemini(contents) {
   throw new Error("AI connection failed.");
 }
 
-// 13. MAIN SEND FUNCTION
+// 13. SEND MESSAGE
 
 async function sendMessage(imageData = null) {
   if (busy) return;
@@ -545,22 +521,13 @@ async function sendMessage(imageData = null) {
 
   busy = true;
 
-  if (input) {
-    input.value = "";
-  }
+  if (input) input.value = "";
 
-  addMessage(
-    message || "Image attached",
-    "user"
-  );
+  addMessage(message || "Image attached", "user");
 
   try {
     if (!imageData) {
       const toolReply = await handleTools(message);
-
-      if (toolReply === "__NAVIGATING__") {
-        return;
-      }
 
       if (toolReply) {
         addMessage(toolReply, "ai");
@@ -575,9 +542,7 @@ async function sendMessage(imageData = null) {
     const userParts = [];
 
     if (message) {
-      userParts.push({
-        text: message
-      });
+      userParts.push({ text: message });
     }
 
     if (imageData) {
@@ -621,12 +586,9 @@ async function sendMessage(imageData = null) {
     setStatus("SYSTEM READY");
 
   } catch (error) {
-    console.error("JARVIS error:", error);
+    console.error("JARVIS ERROR:", error);
 
-    addMessage(
-      "Error: " + error.message,
-      "ai"
-    );
+    addMessage("Error: " + error.message, "ai");
 
     setStatus("CONNECTION ERROR");
 
@@ -655,15 +617,11 @@ function clearChat() {
   setStatus("MEMORY CLEARED");
 }
 
-// 15. INITIALIZE ALL BUTTONS
+// 15. INITIALIZE BUTTONS
 
 function initializeJarvis() {
-
   if (sendBtn) {
-    sendBtn.addEventListener(
-      "click",
-      () => sendMessage()
-    );
+    sendBtn.addEventListener("click", sendMessage);
   }
 
   if (input) {
@@ -676,47 +634,29 @@ function initializeJarvis() {
   }
 
   if (micBtn) {
-    micBtn.addEventListener(
-      "click",
-      startVoiceInput
-    );
+    micBtn.addEventListener("click", startVoiceInput);
   }
 
   if (camBtn) {
-    camBtn.addEventListener(
-      "click",
-      openCamera
-    );
+    camBtn.addEventListener("click", openCamera);
   }
 
   if (imageInput) {
-    imageInput.addEventListener(
-      "change",
-      processImage
-    );
+    imageInput.addEventListener("change", processImage);
   }
 
   if (clearBtn) {
-    clearBtn.addEventListener(
-      "click",
-      clearChat
-    );
+    clearBtn.addEventListener("click", clearChat);
   }
 
   restoreChat();
-
   setStatus("SYSTEM READY");
 
-  console.log(
-    "J.A.R.V.I.S SYSTEM INITIALIZED"
-  );
+  console.log("JARVIS INITIALIZED");
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    initializeJarvis
-  );
+  document.addEventListener("DOMContentLoaded", initializeJarvis);
 } else {
   initializeJarvis();
 }
