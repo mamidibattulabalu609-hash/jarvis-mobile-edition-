@@ -1,15 +1,16 @@
 /* ==========================================
    J.A.R.V.I.S AI ASSISTANT
-   Gemini + Voice + Camera + Memory
+   Gemini + Voice + Camera + Memory + Weather
    Fixed version
 ========================================== */
 
-// ===== 1. CONFIGURATION =====//
-// ===== GEMINI AI MODEL =====
-const MODEL = "gemini-3.8-flash";
+// ===== 1. CONFIGURATION ===== //
+const PRIMARY_MODEL = "gemini-3.8-flash";
+const FALLBACK_MODEL = "gemini-3.5-flash-lite";
 
-const API_URL =
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+function getApiUrl(modelName) {
+    return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+}
 
 let API_KEY = localStorage.getItem("jarvis_key") || "";
 
@@ -257,19 +258,16 @@ function openCamera() {
         return;
     }
 
-    // Ask mobile devices to use the rear camera
     imageInput.setAttribute("accept", "image/*");
     imageInput.setAttribute("capture", "environment");
 
     imageInput.click();
 }
 
-// Connect camera button
 if (camBtn) {
     camBtn.addEventListener("click", openCamera);
 }
 
-// Process selected or captured image
 if (imageInput) {
     imageInput.addEventListener("change", async () => {
         const file = imageInput.files?.[0];
@@ -309,7 +307,6 @@ if (imageInput) {
             setStatus("IMAGE ERROR");
         }
 
-        // Allow selecting the same image again
         imageInput.value = "";
     });
 }
@@ -326,7 +323,6 @@ function fileToBase64(file) {
                 return;
             }
 
-            // Remove the data:image/...;base64, prefix
             resolve(result.split(",")[1]);
         };
 
@@ -338,10 +334,48 @@ function fileToBase64(file) {
     });
 }
 
-// ===== 7. LOCAL COMMANDS =====
+// ===== 7. LIVE WEATHER HELPER (NO API KEY NEEDED) =====
+
+async function getWeather(userPrompt) {
+    const match = userPrompt.match(/(?:weather|temperature)\s+(?:in|for|at)\s+([a-zA-Z\s]+)/i);
+    const city = match ? match[1].trim() : "Vijayawada";
+
+    try {
+        setStatus("FETCHING WEATHER...");
+
+        const geoRes = await fetch(
+            `https://open-meteo.com{encodeURIComponent(city)}&count=1&format=json`
+        );
+        const geoData = await geoRes.json();
+
+        if (!geoData.results || geoData.results.length === 0) {
+            return `I could not find weather data for ${city}.`;
+        }
+
+        const { latitude, longitude, name, country } = geoData.results[0];
+
+        const weatherRes = await fetch(
+            `https://open-meteo.com{latitude}&longitude=${longitude}&current_weather=true`
+        );
+        const weatherData = await weatherRes.json();
+        const current = weatherData.current_weather;
+
+        return `The current temperature in ${name}, ${country} is ${current.temperature}°C with wind speeds of ${current.windspeed} km/h.`;
+    } catch (error) {
+        console.error("Weather fetch error:", error);
+        return "Unable to reach the weather satellite right now. Please try again.";
+    }
+}
+
+// ===== 8. LOCAL COMMANDS =====
 
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
+
+    // Weather (Intercepts before calling Gemini)
+    if (/\b(weather|temperature)\b/.test(t)) {
+        return await getWeather(text);
+    }
 
     // Time
     if (/\b(time|clock)\b/.test(t)) {
@@ -367,470 +401,4 @@ async function handleTools(text) {
     const websites = {
         "open google": "https://www.google.com",
         "open youtube": "https://www.youtube.com",
-        "open gmail": "https://mail.google.com",
-        "open facebook": "https://www.facebook.com",
-        "open instagram": "https://www.instagram.com",
-        "open whatsapp": "https://web.whatsapp.com"
-    };
-
-    if (websites[t]) {
-        window.open(websites[t], "_blank");
-        return "Opening " + t.replace("open ", "") + ".";
-    }
-
-    // Google search
-    if (t.startsWith("search for ")) {
-        const query = t.slice(11).trim();
-
-        if (!query) {
-            return "Please enter something to search.";
-        }
-
-        window.open(
-            "https://www.google.com/search?q=" +
-            encodeURIComponent(query),
-            "_blank"
-        );
-
-        return "Searching Google for " + query;
-    }
-
-    // YouTube search
-    if (t.startsWith("play ")) {
-        const query = t.slice(5).trim();
-
-        if (!query) {
-            return "Please enter something to search.";
-        }
-
-        window.open(
-            "https://www.youtube.com/results?search_query=" +
-            encodeURIComponent(query),
-            "_blank"
-        );
-
-        return "Searching YouTube for " + query;
-    }
-
-    // Calculator
-    if (t.startsWith("calculate ")) {
-        const expression = t.slice(10).trim();
-
-        if (!/^[0-9+\-*/().%\s]+$/.test(expression)) {
-            return "Invalid mathematical expression.";
-        }
-
-        try {
-            const result = Function(
-                '"use strict"; return (' + expression + ')'
-            )();
-
-            return Number.isFinite(result)
-                ? "The answer is " + result
-                : "Invalid calculation.";
-        } catch {
-            return "Unable to calculate that.";
-        }
-    }
-
-    // Battery
-    if (t.includes("battery")) {
-        if (!navigator.getBattery) {
-            return "Battery information is unavailable.";
-        }
-
-        try {
-            const battery = await navigator.getBattery();
-
-            return "Battery level: " +
-                Math.round(battery.level * 100) + "%";
-        } catch {
-            return "Unable to read battery information.";
-        }
-    }
-
-    // Internet
-    if (t.includes("internet") || t.includes("connection")) {
-        return navigator.onLine
-            ? "Internet connection is online."
-            : "Internet connection is offline.";
-    }
-
-    // Greeting
-    if (/^(hello|hi|hey)\b/.test(t)) {
-        return "Hello! JARVIS is online. How can I help you?";
-    }
-
-    return null;
-}
-
-// ===== 8. GEMINI AI CONNECTION =====
-
-async function askGemini(message, imageData = null) {
-    if (!API_KEY) {
-        API_KEY = prompt("Enter your Gemini API key:");
-
-        if (!API_KEY || !API_KEY.trim()) {
-            throw new Error("Gemini API key is required.");
-        }
-
-        API_KEY = API_KEY.trim();
-
-        localStorage.setItem("jarvis_key", API_KEY);
-    }
-
-    const parts = [{ text: message }];
-
-    if (imageData) {
-        parts.push({
-            inlineData: {
-                mimeType: imageData.mimeType,
-                data: imageData.data
-            }
-        });
-    }
-
-    const contents = [
-        ...chatHistory,
-        {
-            role: "user",
-            parts: parts
-        }
-    ];
-
-    const controller = new AbortController();
-
-    const timeout = setTimeout(
-        () => controller.abort(),
-        45000
-    );
-
-    try {
-        const response = await fetch(API_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-goog-api-key": API_KEY
-            },
-            body: JSON.stringify({
-                contents: contents,
-
-                systemInstruction: {
-                    parts: [{
-                        text:
-                            "You are JARVIS, a helpful personal AI assistant. " +
-                            "Answer clearly, accurately and concisely."
-                    }]
-                },
-
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 1024
-                }
-            }),
-
-            signal: controller.signal
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(
-                data.error?.message ||
-                "Gemini API error: " + response.status
-            );
-        }
-
-        const answer = data.candidates?.[0]?.content?.parts
-            ?.map(part => part.text || "")
-            .join("")
-            .trim();
-
-        if (!answer) {
-            throw new Error(
-                "Gemini returned an empty response. Try again."
-            );
-        }
-
-        // Save conversation text only
-        chatHistory.push({
-            role: "user",
-            parts: [{ text: message }]
-        });
-
-        chatHistory.push({
-            role: "model",
-            parts: [{ text: answer }]
-        });
-
-        // Keep recent messages
-        chatHistory = chatHistory.slice(-12);
-
-        localStorage.setItem(
-            "jarvis_history",
-            JSON.stringify(chatHistory)
-        );
-
-        return answer;
-
-    } catch (error) {
-        if (error.name === "AbortError") {
-            throw new Error("Request timed out. Please try again.");
-        }
-
-        throw error;
-
-    } finally {
-        clearTimeout(timeout);
-    }
-}
-
-// ===== 9. MAIN MESSAGE PROCESSOR =====
-
-async function sendMessage(imageData = null) {
-    if (!input) return;
-
-    const message = input.value.trim();
-
-    if ((!message && !imageData) || busy) return;
-
-    if (!navigator.onLine) {
-        addMessage("No internet connection.", "ai");
-        return;
-    }
-
-    busy = true;
-
-    if (sendBtn) {
-        sendBtn.disabled = true;
-    }
-
-    if (message) {
-        addMessage(message, "user");
-    }
-
-    input.value = "";
-    setStatus("PROCESSING...");
-
-    try {
-        const toolResult = imageData
-            ? null
-            : await handleTools(message);
-
-        let answer;
-
-        if (toolResult !== null) {
-            answer = toolResult;
-        } else {
-            answer = await askGemini(
-                message || "Describe this image.",
-                imageData
-            );
-        }
-
-        addMessage(answer, "ai");
-
-        speak(answer);
-
-        setStatus("SYSTEM READY");
-
-    } catch (error) {
-        console.error("JARVIS ERROR:", error);
-
-        addMessage(
-            "Error: " + error.message,
-            "ai"
-        );
-
-        setStatus("CONNECTION ERROR");
-
-    } finally {
-        busy = false;
-
-        if (sendBtn) {
-            sendBtn.disabled = false;
-        }
-
-        if (input) {
-            input.focus();
-        }
-    }
-}
-
-// ===== 10. SEND BUTTON =====
-
-if (sendBtn) {
-    sendBtn.addEventListener("click", () => {
-        sendMessage();
-    });
-}
-
-// Enter to send
-if (input) {
-    input.addEventListener("keydown", event => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            sendMessage();
-        }
-    });
-}
-
-// ===== 11. CLEAR CHAT =====
-
-if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-        if (!confirm("Clear all JARVIS chat history?")) {
-            return;
-        }
-
-        chatHistory = [];
-
-        localStorage.removeItem("jarvis_history");
-
-        if (chat) {
-            chat.innerHTML = "";
-        }
-
-        addMessage(
-            "Chat cleared. JARVIS is ready.",
-            "ai"
-        );
-
-        setStatus("SYSTEM READY");
-    });
-}
-
-// ===== 12. WAKE WORD ENGINE =====
-
-function startWakeWordListening() {
-    const SpeechRecognition = getSpeechRecognition();
-
-    if (!SpeechRecognition) {
-        addMessage(
-            "Wake word recognition is not supported in this browser.",
-            "ai"
-        );
-        return;
-    }
-
-    if (!wakeWordEnabled) return;
-
-    stopRecognition();
-
-    recognition = new SpeechRecognition();
-
-    recognition.lang = "en-IN";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    isListening = true;
-
-    setStatus("LISTENING FOR HEY JARVIS");
-
-    recognition.onresult = event => {
-        let transcript = "";
-
-        for (let i = event.resultIndex;
-             i < event.results.length;
-             i++) {
-            transcript +=
-                event.results[i][0].transcript + " ";
-        }
-
-        transcript = transcript.toLowerCase().trim();
-
-        if (transcript.includes(WAKE_WORD)) {
-            wakeWordEnabled = false;
-
-            stopRecognition();
-
-            setStatus("JARVIS ACTIVATED");
-
-            speak("Yes, how can I help?");
-
-            // Start command listening after response
-            setTimeout(() => {
-                startVoiceInput();
-            }, 1500);
-        }
-    };
-
-    recognition.onerror = event => {
-        console.error("Wake word error:", event.error);
-        stopRecognition();
-        setStatus("WAKE WORD ERROR");
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-
-        if (wakeWordEnabled) {
-            clearTimeout(wakeWordRestartTimer);
-
-            wakeWordRestartTimer = setTimeout(() => {
-                if (wakeWordEnabled) {
-                    startWakeWordListening();
-                }
-            }, 1000);
-        }
-    };
-
-    try {
-        recognition.start();
-    } catch (error) {
-        console.error("Wake word start error:", error);
-        stopRecognition();
-    }
-}
-
-function toggleWakeWord() {
-    wakeWordEnabled = !wakeWordEnabled;
-
-    const wakeBtn = document.getElementById("wake-btn");
-    const wakeStatus = document.getElementById("wake-status");
-
-    if (wakeWordEnabled) {
-        if (wakeBtn) {
-            wakeBtn.classList.add("active");
-        }
-
-        if (wakeStatus) {
-            wakeStatus.textContent =
-                "LISTENING FOR HEY JARVIS...";
-            wakeStatus.style.color = "#00ff00";
-        }
-
-        startWakeWordListening();
-
-    } else {
-        if (wakeBtn) {
-            wakeBtn.classList.remove("active");
-        }
-
-        if (wakeStatus) {
-            wakeStatus.textContent = "WAKE: OFF";
-            wakeStatus.style.color = "#888";
-        }
-
-        clearTimeout(wakeWordRestartTimer);
-        stopRecognition();
-
-        setStatus("SYSTEM READY");
-    }
-}
-
-// Connect optional wake word button
-const wakeBtn = document.getElementById("wake-btn");
-
-if (wakeBtn) {
-    wakeBtn.addEventListener("click", toggleWakeWord);
-}
-
-// ===== 13. STARTUP =====
-
-restoreChat();
-
-setStatus("SYSTEM READY");
-
-console.log("J.A.R.V.I.S loaded successfully.");
-
+       
