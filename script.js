@@ -1,69 +1,89 @@
-/* ==========================================
+/* =====================================================
    J.A.R.V.I.S. PERSONAL AI ASSISTANT
-   Gemini + Voice + Camera + Memory + Weather
-   Fixed version
-========================================== */
+   Gemini 3.6 Flash | Chat | Voice | Camera | Memory | Weather
+   =====================================================
 
-// IMPORTANT:
-// This browser-only version is suitable for local testing.
-// Do not publish your API key in a public website or public repository.
+   IMPORTANT:
+   - This is a browser-side learning/demo project.
+   - A Gemini API key stored in browser storage is visible to
+     anyone who can inspect the browser. Do not publish this
+     project with a real key. For a public app, use a backend.
+*/
+
+"use strict";
+
+// ==================== 1. CONFIGURATION ====================
 
 const CONFIG = {
-    MODELS: ["gemini-3.8-flash", "gemini-3.5-flash-lite"],
+    MODEL: "gemini-3.6-flash",
     API_BASE: "https://generativelanguage.googleapis.com/v1beta/models/",
-    MAX_HISTORY_MESSAGES: 20,
-    MAX_CONTEXT_MESSAGES: 10
+    MAX_SAVED_MESSAGES: 20,
+    MAX_CONTEXT_MESSAGES: 8,
+    MAX_OUTPUT_TOKENS: 700,
+    RETRIES: 1
 };
 
-// ===== 1. STATE =====
-let API_KEY = localStorage.getItem("jarvis_key") || "";
+// ==================== 2. STATE ====================
+
+let apiKey = localStorage.getItem("jarvis_key") || "";
 let chatHistory = [];
 
 try {
-    const saved = JSON.parse(localStorage.getItem("jarvis_history") || "[]");
-    chatHistory = Array.isArray(saved) ? saved : [];
-} catch {
+    const savedHistory = JSON.parse(
+        localStorage.getItem("jarvis_history") || "[]"
+    );
+    chatHistory = Array.isArray(savedHistory) ? savedHistory : [];
+} catch (error) {
+    console.warn("Chat history could not be loaded:", error);
     chatHistory = [];
 }
 
-let busy = false;
-let recognition = null;
+let isBusy = false;
+let speechRecognition = null;
 let wakeRecognition = null;
 let isListening = false;
 let wakeEnabled = false;
 
-// ===== 2. HTML ELEMENTS =====
+// ==================== 3. HTML ELEMENTS ====================
+
 const input = document.getElementById("msg");
-const sendBtn = document.getElementById("send");
-const micBtn = document.getElementById("mic-btn");
-const camBtn = document.getElementById("cam-btn");
-const clearBtn = document.getElementById("clear-btn");
-const wakeBtn = document.getElementById("wake-btn");
+const sendButton = document.getElementById("send");
+const micButton = document.getElementById("mic-btn");
+const cameraButton = document.getElementById("cam-btn");
+const clearButton = document.getElementById("clear-btn");
+const wakeButton = document.getElementById("wake-btn");
 const wakeStatus = document.getElementById("wake-status");
 const imageInput = document.getElementById("img-input");
-const chat = document.getElementById("chat");
-const statusElement = document.getElementById("system-status");
+const chatBox = document.getElementById("chat");
+const systemStatus = document.getElementById("system-status");
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const wait = milliseconds =>
+    new Promise(resolve => setTimeout(resolve, milliseconds));
 
-// ===== 3. CHAT DISPLAY AND MEMORY =====
-function addMessage(message, type = "ai") {
-    if (!chat) return;
-
-    const div = document.createElement("div");
-    div.className = "msg " + type;
-    div.textContent = (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-}
+// ==================== 4. UI AND CHAT HISTORY ====================
 
 function setStatus(message) {
-    if (statusElement) statusElement.textContent = message;
+    if (systemStatus) {
+        systemStatus.textContent = message;
+    }
+}
+
+function addMessage(message, type = "ai") {
+    if (!chatBox) return;
+
+    const messageElement = document.createElement("div");
+    messageElement.className = "msg " + type;
+
+    const prefix = type === "user" ? "YOU: " : "J.A.R.V.I.S: ";
+    messageElement.textContent = prefix + message;
+
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 function saveHistory() {
     try {
-        chatHistory = chatHistory.slice(-CONFIG.MAX_HISTORY_MESSAGES);
+        chatHistory = chatHistory.slice(-CONFIG.MAX_SAVED_MESSAGES);
         localStorage.setItem("jarvis_history", JSON.stringify(chatHistory));
     } catch (error) {
         console.warn("Could not save chat history:", error);
@@ -71,9 +91,9 @@ function saveHistory() {
 }
 
 function restoreChat() {
-    if (!chat) return;
+    if (!chatBox) return;
 
-    chat.innerHTML = "";
+    chatBox.innerHTML = "";
 
     if (chatHistory.length === 0) {
         addMessage("Systems online. How may I assist you?", "ai");
@@ -87,18 +107,22 @@ function restoreChat() {
             .trim();
 
         if (messageText) {
-            addMessage(messageText, item.role === "user" ? "user" : "ai");
+            addMessage(
+                messageText,
+                item.role === "user" ? "user" : "ai"
+            );
         }
     });
 }
 
-// ===== 4. TEXT-TO-SPEECH =====
-function speak(text) {
+// ==================== 5. VOICE REPLY ====================
+
+function speak(message) {
     if (!("speechSynthesis" in window)) return;
 
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(message);
     utterance.lang = "en-IN";
     utterance.rate = 1;
     utterance.pitch = 1;
@@ -110,33 +134,42 @@ function speak(text) {
     window.speechSynthesis.speak(utterance);
 }
 
-// ===== 5. SPEECH RECOGNITION =====
+// ==================== 6. VOICE INPUT ====================
+
 function getSpeechRecognition() {
-    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    return window.SpeechRecognition ||
+        window.webkitSpeechRecognition ||
+        null;
 }
 
 function stopVoiceInput() {
-    if (recognition) {
+    if (speechRecognition) {
         try {
-            recognition.onresult = null;
-            recognition.onerror = null;
-            recognition.onend = null;
-            recognition.stop();
+            speechRecognition.onresult = null;
+            speechRecognition.onerror = null;
+            speechRecognition.onend = null;
+            speechRecognition.stop();
         } catch (error) {
-            console.warn("Could not stop speech recognition:", error);
+            console.warn("Voice stop error:", error);
         }
     }
 
-    recognition = null;
+    speechRecognition = null;
     isListening = false;
-    if (micBtn) micBtn.classList.remove("active");
+
+    if (micButton) {
+        micButton.classList.remove("active");
+    }
 }
 
 function startVoiceInput() {
     const SpeechRecognition = getSpeechRecognition();
 
     if (!SpeechRecognition) {
-        addMessage("Voice input is not supported in this browser. Try Chrome.", "ai");
+        addMessage(
+            "Voice input is not supported in this browser. Please try Chrome.",
+            "ai"
+        );
         setStatus("VOICE NOT SUPPORTED");
         return;
     }
@@ -149,18 +182,23 @@ function startVoiceInput() {
 
     stopVoiceInput();
 
-    recognition = new SpeechRecognition();
-    recognition.lang = "en-IN";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.lang = "en-IN";
+    speechRecognition.continuous = false;
+    speechRecognition.interimResults = false;
+    speechRecognition.maxAlternatives = 1;
 
     isListening = true;
-    if (micBtn) micBtn.classList.add("active");
+
+    if (micButton) {
+        micButton.classList.add("active");
+    }
+
     setStatus("LISTENING...");
 
-    recognition.onresult = event => {
-        const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+    speechRecognition.onresult = event => {
+        const transcript =
+            event.results?.[0]?.[0]?.transcript?.trim() || "";
 
         stopVoiceInput();
 
@@ -169,47 +207,63 @@ function startVoiceInput() {
             return;
         }
 
-        if (input) input.value = transcript;
+        if (input) {
+            input.value = transcript;
+        }
+
         sendMessage();
     };
 
-    recognition.onerror = event => {
+    speechRecognition.onerror = event => {
         stopVoiceInput();
-        console.error("Speech recognition error:", event.error);
 
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-            addMessage("Microphone permission was denied. Allow microphone access in your browser settings.", "ai");
+        if (event.error === "not-allowed" ||
+            event.error === "service-not-allowed") {
+            addMessage(
+                "Microphone permission denied. Allow microphone access in browser settings.",
+                "ai"
+            );
         } else if (event.error === "no-speech") {
-            addMessage("I did not hear anything. Tap the microphone and try again.", "ai");
+            addMessage(
+                "I did not hear anything. Tap the microphone and try again.",
+                "ai"
+            );
         } else {
-            addMessage("Voice recognition error: " + event.error, "ai");
+            addMessage("Voice error: " + event.error, "ai");
         }
 
         setStatus("VOICE ERROR");
     };
 
-    recognition.onend = () => {
+    speechRecognition.onend = () => {
         isListening = false;
-        if (micBtn) micBtn.classList.remove("active");
-        if (statusElement && statusElement.textContent === "LISTENING...") {
+
+        if (micButton) {
+            micButton.classList.remove("active");
+        }
+
+        if (systemStatus &&
+            systemStatus.textContent === "LISTENING...") {
             setStatus("SYSTEM READY");
         }
     };
 
     try {
-        recognition.start();
+        speechRecognition.start();
     } catch (error) {
         stopVoiceInput();
-        console.error("Could not start microphone:", error);
-        addMessage("Could not start the microphone. Please try again.", "ai");
+        addMessage("Could not start the microphone. Try again.", "ai");
         setStatus("MICROPHONE ERROR");
+        console.error(error);
     }
 }
 
-if (micBtn) micBtn.addEventListener("click", startVoiceInput);
+if (micButton) {
+    micButton.addEventListener("click", startVoiceInput);
+}
 
-// ===== 6. OPTIONAL WAKE-WORD MODE =====
-// Tap the microphone icon in the top bar to enable/disable "Hey Jarvis".
+// ==================== 7. WAKE WORD ====================
+
 function stopWakeMode() {
     if (wakeRecognition) {
         try {
@@ -218,22 +272,30 @@ function stopWakeMode() {
             wakeRecognition.onend = null;
             wakeRecognition.stop();
         } catch (error) {
-            console.warn("Could not stop wake-word listener:", error);
+            console.warn("Wake listener stop error:", error);
         }
     }
 
     wakeRecognition = null;
     wakeEnabled = false;
 
-    if (wakeStatus) wakeStatus.textContent = "WAKE: OFF";
-    if (wakeBtn) wakeBtn.classList.remove("active");
+    if (wakeStatus) {
+        wakeStatus.textContent = "WAKE: OFF";
+    }
+
+    if (wakeButton) {
+        wakeButton.classList.remove("active");
+    }
 }
 
 function startWakeMode() {
     const SpeechRecognition = getSpeechRecognition();
 
     if (!SpeechRecognition) {
-        addMessage("Wake-word listening is not supported in this browser.", "ai");
+        addMessage(
+            "Wake-word listening is not supported in this browser.",
+            "ai"
+        );
         return;
     }
 
@@ -245,18 +307,30 @@ function startWakeMode() {
     wakeRecognition.interimResults = false;
 
     wakeEnabled = true;
-    if (wakeStatus) wakeStatus.textContent = "WAKE: ON";
-    if (wakeBtn) wakeBtn.classList.add("active");
+
+    if (wakeStatus) {
+        wakeStatus.textContent = "WAKE: ON";
+    }
+
+    if (wakeButton) {
+        wakeButton.classList.add("active");
+    }
+
     setStatus("WAITING FOR HEY JARVIS...");
 
     wakeRecognition.onresult = event => {
-        const result = event.results[event.results.length - 1];
-        const spoken = result?.[0]?.transcript?.trim() || "";
-        const lower = spoken.toLowerCase();
-        const phraseIndex = lower.indexOf("hey jarvis");
+        const lastResult = event.results[event.results.length - 1];
+        const spokenText =
+            lastResult?.[0]?.transcript?.trim() || "";
 
-        if (phraseIndex !== -1) {
-            const command = spoken.slice(phraseIndex + "hey jarvis".length).trim();
+        const lowerText = spokenText.toLowerCase();
+        const wakeIndex = lowerText.indexOf("hey jarvis");
+
+        if (wakeIndex !== -1) {
+            const command = spokenText
+                .slice(wakeIndex + "hey jarvis".length)
+                .trim();
+
             stopWakeMode();
 
             if (command) {
@@ -270,21 +344,22 @@ function startWakeMode() {
     };
 
     wakeRecognition.onerror = event => {
-        console.warn("Wake-word error:", event.error);
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        console.warn("Wake-word recognition error:", event.error);
+
+        if (event.error === "not-allowed" ||
+            event.error === "service-not-allowed") {
             stopWakeMode();
-            addMessage("Microphone permission is required for wake-word mode.", "ai");
+            addMessage("Microphone permission is required.", "ai");
             setStatus("MICROPHONE PERMISSION NEEDED");
         }
     };
 
     wakeRecognition.onend = () => {
-        // Some browsers stop continuous recognition automatically.
         if (wakeEnabled && wakeRecognition) {
             try {
                 wakeRecognition.start();
             } catch (error) {
-                console.warn("Wake-word restart failed:", error);
+                console.warn("Wake listener restart failed:", error);
             }
         }
     };
@@ -293,13 +368,13 @@ function startWakeMode() {
         wakeRecognition.start();
     } catch (error) {
         stopWakeMode();
-        addMessage("Could not start wake-word mode. Please try again.", "ai");
+        addMessage("Could not start wake-word mode. Try again.", "ai");
         setStatus("MICROPHONE ERROR");
     }
 }
 
-if (wakeBtn) {
-    wakeBtn.addEventListener("click", () => {
+if (wakeButton) {
+    wakeButton.addEventListener("click", () => {
         if (wakeEnabled) {
             stopWakeMode();
             setStatus("SYSTEM READY");
@@ -309,7 +384,8 @@ if (wakeBtn) {
     });
 }
 
-// ===== 7. CAMERA AND IMAGE INPUT =====
+// ==================== 8. CAMERA AND IMAGE ====================
+
 function openCamera() {
     if (!imageInput) {
         addMessage("Image input is missing from the HTML page.", "ai");
@@ -319,22 +395,27 @@ function openCamera() {
     imageInput.click();
 }
 
-if (camBtn) camBtn.addEventListener("click", openCamera);
+if (cameraButton) {
+    cameraButton.addEventListener("click", openCamera);
+}
 
-function fileToBase64(file) {
+function readImageAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
         reader.onload = () => {
             if (typeof reader.result !== "string") {
-                reject(new Error("Could not read the selected image."));
+                reject(new Error("Could not read the image."));
                 return;
             }
 
             resolve(reader.result.split(",")[1]);
         };
 
-        reader.onerror = () => reject(new Error("Image file reading failed."));
+        reader.onerror = () => {
+            reject(new Error("Image reading failed."));
+        };
+
         reader.readAsDataURL(file);
     });
 }
@@ -342,6 +423,7 @@ function fileToBase64(file) {
 if (imageInput) {
     imageInput.addEventListener("change", async () => {
         const file = imageInput.files?.[0];
+
         if (!file) return;
 
         if (!file.type.startsWith("image/")) {
@@ -351,8 +433,9 @@ if (imageInput) {
         }
 
         try {
-            setStatus("PROCESSING IMAGE...");
-            const base64 = await fileToBase64(file);
+            setStatus("READING IMAGE...");
+
+            const base64Data = await readImageAsBase64(file);
 
             if (input && !input.value.trim()) {
                 input.value = "Please describe this image.";
@@ -360,11 +443,11 @@ if (imageInput) {
 
             await sendMessage({
                 mimeType: file.type,
-                data: base64
+                data: base64Data
             });
         } catch (error) {
-            console.error("Image processing error:", error);
-            addMessage("Unable to process this image: " + error.message, "ai");
+            console.error("Image error:", error);
+            addMessage("Image error: " + error.message, "ai");
             setStatus("IMAGE ERROR");
         } finally {
             imageInput.value = "";
@@ -372,72 +455,92 @@ if (imageInput) {
     });
 }
 
-// ===== 8. WEATHER =====
-async function getWeather(userPrompt) {
-    const match = userPrompt.match(/\b(?:weather|temperature|forecast)\s+(?:in|for|at)\s+([a-zA-Z\s]+?)(?:\?|$)/i);
+// ==================== 9. WEATHER ====================
+
+async function getWeather(command) {
+    const match = command.match(
+        /\b(?:weather|temperature|forecast)\s+(?:in|for|at)\s+([a-zA-Z\s]+?)(?:\?|$)/i
+    );
+
     const city = match ? match[1].trim() : "Hyderabad";
 
     try {
         setStatus("FETCHING WEATHER...");
 
-        const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=" +
-            encodeURIComponent(city) + "&count=1&language=en&format=json";
+        const geoURL =
+            "https://geocoding-api.open-meteo.com/v1/search?name=" +
+            encodeURIComponent(city) +
+            "&count=1&language=en&format=json";
 
-        const geoResponse = await fetch(geoUrl);
-        if (!geoResponse.ok) throw new Error("Weather location lookup failed.");
+        const geoResponse = await fetch(geoURL);
+
+        if (!geoResponse.ok) {
+            throw new Error("Location lookup failed.");
+        }
 
         const geoData = await geoResponse.json();
 
-        if (!geoData.results?.length) {
+        if (!geoData.results || geoData.results.length === 0) {
             return "I could not find weather information for " + city + ".";
         }
 
         const place = geoData.results[0];
 
-        const weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" +
+        const weatherURL =
+            "https://api.open-meteo.com/v1/forecast?latitude=" +
             encodeURIComponent(place.latitude) +
-            "&longitude=" + encodeURIComponent(place.longitude) +
+            "&longitude=" +
+            encodeURIComponent(place.longitude) +
             "&current=temperature_2m,wind_speed_10m";
 
-        const weatherResponse = await fetch(weatherUrl);
-        if (!weatherResponse.ok) throw new Error("Weather service returned an error.");
+        const weatherResponse = await fetch(weatherURL);
+
+        if (!weatherResponse.ok) {
+            throw new Error("Weather service returned an error.");
+        }
 
         const weatherData = await weatherResponse.json();
         const current = weatherData.current;
 
-        if (!current) throw new Error("Current weather data is unavailable.");
+        if (!current) {
+            throw new Error("Current weather data is unavailable.");
+        }
 
-        return "The current temperature in " + place.name + " is " +
-            current.temperature_2m + "°C. Wind speed is " +
-            current.wind_speed_10m + " km/h.";
+        return "Current temperature in " + place.name + " is " +
+            current.temperature_2m + " degrees Celsius. Wind speed is " +
+            current.wind_speed_10m + " kilometres per hour.";
     } catch (error) {
-        console.error("Weather error:", error);
-        return "I could not retrieve weather information right now. Please try again.";
+        console.error("Weather request failed:", error);
+        return "I could not retrieve weather information right now.";
     } finally {
         setStatus("SYSTEM READY");
     }
 }
 
-// ===== 9. LOCAL COMMANDS =====
-async function handleTools(commandText) {
-    const t = commandText.toLowerCase().trim();
+// ==================== 10. LOCAL COMMANDS ====================
 
-    if (/\b(weather|temperature|forecast)\b/.test(t)) {
-        return getWeather(commandText);
+async function handleLocalCommand(command) {
+    const text = command.toLowerCase().trim();
+
+    if (/\b(weather|temperature|forecast)\b/.test(text)) {
+        return await getWeather(command);
     }
 
-    if (/\b(time|clock)\b/.test(t)) {
-        return "Current time: " + new Date().toLocaleTimeString("en-IN");
+    if (/\b(time|clock)\b/.test(text)) {
+        return "Current time: " +
+            new Date().toLocaleTimeString("en-IN");
     }
 
-    if (/\b(date|today's date|what day is today)\b/.test(t)) {
-        return "Today's date: " + new Date().toLocaleDateString("en-IN");
+    if (/\b(date|today's date|what day is today)\b/.test(text)) {
+        return "Today's date: " +
+            new Date().toLocaleDateString("en-IN");
     }
 
-    if (/\b(day of week|weekday)\b/.test(t)) {
-        return "Today is " + new Date().toLocaleDateString("en-IN", {
-            weekday: "long"
-        });
+    if (/\b(day of week|weekday)\b/.test(text)) {
+        return "Today is " +
+            new Date().toLocaleDateString("en-IN", {
+                weekday: "long"
+            });
     }
 
     const websites = {
@@ -449,10 +552,14 @@ async function handleTools(commandText) {
         "open whatsapp": "https://www.whatsapp.com"
     };
 
-    for (const [phrase, url] of Object.entries(websites)) {
-        if (t.includes(phrase)) {
+    for (const phrase of Object.keys(websites)) {
+        if (text.includes(phrase)) {
             const siteName = phrase.replace("open ", "");
-            window.open(url, "_blank", "noopener,noreferrer");
+            window.open(
+                websites[phrase],
+                "_blank",
+                "noopener,noreferrer"
+            );
             return "Opening " + siteName + ".";
         }
     }
@@ -460,111 +567,138 @@ async function handleTools(commandText) {
     return null;
 }
 
-// ===== 10. GEMINI API =====
-async function askGemini(contentsPayload) {
-    if (!API_KEY) {
-        const enteredKey = window.prompt("Enter your Gemini API key:");
-        if (!enteredKey || !enteredKey.trim()) {
-            throw new Error("Gemini API key was not entered.");
-        }
+// ==================== 11. GEMINI 3.6 FLASH API ====================
 
-        API_KEY = enteredKey.trim();
-        localStorage.setItem("jarvis_key", API_KEY);
+async function getApiKey() {
+    if (apiKey) return apiKey;
+
+    const enteredKey = window.prompt("Enter your Gemini API key:");
+
+    if (!enteredKey || !enteredKey.trim()) {
+        throw new Error("No Gemini API key was entered.");
     }
+
+    apiKey = enteredKey.trim();
+
+    try {
+        localStorage.setItem("jarvis_key", apiKey);
+    } catch (error) {
+        console.warn("Could not save API key in this browser:", error);
+    }
+
+    return apiKey;
+}
+
+async function callGemini(contents) {
+    const key = await getApiKey();
+
+    const endpoint =
+        CONFIG.API_BASE +
+        CONFIG.MODEL +
+        ":generateContent";
 
     let lastError = null;
 
-    for (const model of CONFIG.MODELS) {
-        const url = CONFIG.API_BASE + model + ":generateContent";
-
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": API_KEY
+    for (let attempt = 0; attempt <= CONFIG.RETRIES; attempt++) {
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": key
+                },
+                body: JSON.stringify({
+                    systemInstruction: {
+                        parts: [{
+                            text:
+                                "You are J.A.R.V.I.S., a helpful personal AI assistant. " +
+                                "Give clear, accurate, concise answers. " +
+                                "Reply in the same language as the user."
+                        }]
                     },
-                    body: JSON.stringify({
-                        systemInstruction: {
-                            parts: [{
-                                text: "You are J.A.R.V.I.S., a helpful, clear, concise personal AI assistant. Reply in the language used by the user."
-                            }]
-                        },
-                        contents: contentsPayload,
-                        generationConfig: {
-                            temperature: 0.7,
-                            maxOutputTokens: 1024
-                        }
-                    })
-                });
-
-                const data = await response.json().catch(() => ({}));
-
-                if (response.ok) {
-                    const reply = data.candidates?.[0]?.content?.parts
-                        ?.map(part => part.text || "")
-                        .join("")
-                        .trim();
-
-                    if (!reply) {
-                        throw new Error("Gemini returned an empty response.");
+                    contents: contents,
+                    generationConfig: {
+                        maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS
                     }
+                })
+            });
 
-                    return reply;
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                const answer = data.candidates?.[0]?.content?.parts
+                    ?.map(part => part.text || "")
+                    .join("")
+                    .trim();
+
+                if (!answer) {
+                    throw new Error(
+                        data.promptFeedback?.blockReason
+                            ? "Request blocked: " + data.promptFeedback.blockReason
+                            : "Gemini returned an empty response."
+                    );
                 }
 
-                const message = data.error?.message || ("HTTP " + response.status);
-                lastError = new Error(message);
+                return answer;
+            }
 
-                // Retry temporary server or rate-limit errors.
-                if ([429, 500, 502, 503, 504].includes(response.status)) {
-                    setStatus("RETRYING " + attempt + "/3...");
-                    if (attempt < 3) {
-                        await sleep(1000 * attempt);
-                        continue;
-                    }
-                    break;
-                }
+            const apiMessage =
+                data.error?.message ||
+                ("Gemini API error: HTTP " + response.status);
 
-                // Do not retry invalid keys, invalid requests, or unavailable models.
-                if ([400, 401, 403, 404].includes(response.status)) {
-                    throw lastError;
-                }
+            lastError = new Error(apiMessage);
 
-                throw lastError;
-            } catch (error) {
-                lastError = error;
+            // Retry only temporary rate-limit/server errors once.
+            if (
+                attempt < CONFIG.RETRIES &&
+                [429, 500, 502, 503, 504].includes(response.status)
+            ) {
+                setStatus("RETRYING...");
+                await wait(700);
+                continue;
+            }
 
-                // Network errors can be retried a limited number of times.
-                if (attempt < 3 && !(error.message && /API key|permission|not found|invalid/i.test(error.message))) {
-                    await sleep(1000 * attempt);
-                    continue;
-                }
+            throw lastError;
+        } catch (error) {
+            lastError = error;
 
-                break;
+            if (attempt < CONFIG.RETRIES &&
+                !(error instanceof TypeError)) {
+                throw error;
+            }
+
+            if (attempt < CONFIG.RETRIES) {
+                setStatus("RECONNECTING...");
+                await wait(700);
+                continue;
             }
         }
     }
 
-    throw lastError || new Error("All configured Gemini models failed. Check your model access and API key.");
+    throw lastError || new Error("Gemini request failed.");
 }
 
-// ===== 11. SEND MESSAGE =====
+// ==================== 12. SEND MESSAGE ====================
+
 async function sendMessage(imageData = null) {
-    if (busy) return;
+    if (isBusy) return;
 
-    const messageText = input ? input.value.trim() : "";
-    if (!messageText && !imageData) return;
+    const userText = input ? input.value.trim() : "";
 
-    busy = true;
-    if (input) input.value = "";
+    if (!userText && !imageData) return;
 
-    addMessage(messageText || "Image attached", "user");
+    isBusy = true;
+
+    if (input) {
+        input.value = "";
+    }
+
+    addMessage(userText || "Image attached", "user");
 
     try {
+        // Handle local commands without calling Gemini.
         if (!imageData) {
-            const localReply = await handleTools(messageText);
+            const localReply = await handleLocalCommand(userText);
 
             if (localReply) {
                 addMessage(localReply, "ai");
@@ -577,7 +711,10 @@ async function sendMessage(imageData = null) {
         setStatus(imageData ? "ANALYZING IMAGE..." : "THINKING...");
 
         const userParts = [];
-        if (messageText) userParts.push({ text: messageText });
+
+        if (userText) {
+            userParts.push({ text: userText });
+        }
 
         if (imageData) {
             userParts.push({
@@ -596,51 +733,6 @@ async function sendMessage(imageData = null) {
             }
         ];
 
-        const aiReply = await askGemini(requestContents);
+        const answer = await callGemini(requestContents);
 
-        chatHistory.push({
-            role: "user",
-            parts: [{ text: messageText || "Image attached" }]
-        });
-
-        chatHistory.push({
-            role: "model",
-            parts: [{ text: aiReply }]
-        });
-
-        saveHistory();
-        addMessage(aiReply, "ai");
-        speak(aiReply);
-        setStatus("SYSTEM READY");
-    } catch (error) {
-        console.error("J.A.R.V.I.S. error:", error);
-        addMessage("Error: " + (error.message || "Unknown error"), "ai");
-        setStatus("CONNECTION ERROR");
-    } finally {
-        busy = false;
-    }
-}
-
-// ===== 12. BUTTONS AND STARTUP =====
-if (sendBtn) {
-    sendBtn.addEventListener("click", () => sendMessage());
-}
-
-if (input) {
-    input.addEventListener("keydown", event => {
-        if (event.key === "Enter") sendMessage();
-    });
-}
-
-if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-        chatHistory = [];
-        localStorage.removeItem("jarvis_history");
-        restoreChat();
-        setStatus("MEMORY CLEARED");
-    });
-}
-
-restoreChat();
-setStatus("SYSTEM READY");
-            
+        chatHistory.push(
