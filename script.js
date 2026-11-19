@@ -1,12 +1,13 @@
-
 /* ==========================================
    J.A.R.V.I.S AI ASSISTANT
    Gemini + Voice + Camera + Memory
+   Fixed version
 ========================================== */
 
 // ===== 1. CONFIGURATION =====
 
-const MODEL = "gemini-3.8-flash";
+const MODEL = "gemini-2.5-flash";
+
 const API_URL =
     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
@@ -18,12 +19,19 @@ try {
     chatHistory = JSON.parse(
         localStorage.getItem("jarvis_history") || "[]"
     );
+
     if (!Array.isArray(chatHistory)) chatHistory = [];
 } catch {
     chatHistory = [];
 }
 
 let busy = false;
+let recognition = null;
+let isListening = false;
+let wakeWordEnabled = false;
+let wakeWordRestartTimer = null;
+
+const WAKE_WORD = "hey jarvis";
 
 // ===== 2. HTML ELEMENTS =====
 
@@ -34,57 +42,320 @@ const camBtn = document.getElementById("cam-btn");
 const clearBtn = document.getElementById("clear-btn");
 const imageInput = document.getElementById("img-input");
 const chat = document.getElementById("chat");
-const status = document.getElementById("system-status");
+const statusElement = document.getElementById("system-status");
 
 // ===== 3. DISPLAY MESSAGES =====
 
 function addMessage(message, type = "ai") {
-    const div = document.createElement("div");
+    if (!chat) return;
 
+    const div = document.createElement("div");
     div.className = "msg " + type;
+
     div.textContent =
-        (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message;
+        (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") +
+        message;
 
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
 }
 
 function setStatus(message) {
-    status.textContent = message;
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+// Restore saved chat messages
+function restoreChat() {
+    if (!chat) return;
+
+    chatHistory.forEach(item => {
+        const text = item.parts
+            ?.map(part => part.text || "")
+            .join("");
+
+        if (!text) return;
+
+        addMessage(
+            text,
+            item.role === "user" ? "user" : "ai"
+        );
+    });
 }
 
 // ===== 4. VOICE OUTPUT =====
 
 function speak(text) {
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window)) {
+        console.warn("Speech output is not supported.");
+        return;
+    }
 
     window.speechSynthesis.cancel();
 
     const speech = new SpeechSynthesisUtterance(text);
     speech.lang = "en-IN";
     speech.rate = 1;
+    speech.pitch = 1;
+
+    speech.onstart = () => setStatus("SPEAKING...");
+    speech.onend = () => setStatus("SYSTEM READY");
 
     window.speechSynthesis.speak(speech);
 }
 
-// ===== 5. LOCAL TOOLS (15 COMMANDS) =====
+// ===== 5. SPEECH RECOGNITION SUPPORT =====
+
+function getSpeechRecognition() {
+    return window.SpeechRecognition ||
+           window.webkitSpeechRecognition ||
+           null;
+}
+
+function stopRecognition() {
+    if (recognition) {
+        try {
+            recognition.onresult = null;
+            recognition.onerror = null;
+            recognition.onend = null;
+            recognition.stop();
+        } catch (error) {
+            console.log("Recognition stop:", error);
+        }
+    }
+
+    recognition = null;
+    isListening = false;
+
+    if (micBtn) {
+        micBtn.classList.remove("active");
+    }
+}
+
+function startVoiceInput() {
+    const SpeechRecognition = getSpeechRecognition();
+
+    if (!SpeechRecognition) {
+        addMessage(
+            "Voice recognition is not supported in this browser. Try Google Chrome.",
+            "ai"
+        );
+        setStatus("VOICE NOT SUPPORTED");
+        return;
+    }
+
+    if (isListening) {
+        stopRecognition();
+        setStatus("SYSTEM READY");
+        return;
+    }
+
+    stopRecognition();
+
+    recognition = new SpeechRecognition();
+
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    isListening = true;
+
+    if (micBtn) {
+        micBtn.classList.add("active");
+    }
+
+    setStatus("LISTENING...");
+
+    recognition.onresult = event => {
+        const transcript =
+            event.results[0][0].transcript.trim();
+
+        if (!transcript) return;
+
+        if (input) {
+            input.value = transcript;
+        }
+
+        stopRecognition();
+
+        setStatus("VOICE RECEIVED");
+
+        // Send recognized words to JARVIS
+        sendMessage();
+    };
+
+    recognition.onerror = event => {
+        console.error("Voice error:", event.error);
+
+        stopRecognition();
+
+        if (event.error === "not-allowed" ||
+            event.error === "service-not-allowed") {
+            addMessage(
+                "Microphone permission denied. Allow microphone access in Chrome settings.",
+                "ai"
+            );
+        } else if (event.error === "no-speech") {
+            addMessage(
+                "I did not hear anything. Tap the microphone and try again.",
+                "ai"
+            );
+        } else {
+            addMessage(
+                "Voice recognition error: " + event.error,
+                "ai"
+            );
+        }
+
+        setStatus("VOICE ERROR");
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+
+        if (micBtn) {
+            micBtn.classList.remove("active");
+        }
+
+        if (statusElement &&
+            statusElement.textContent === "LISTENING...") {
+            setStatus("SYSTEM READY");
+        }
+    };
+
+    try {
+        recognition.start();
+    } catch (error) {
+        console.error("Recognition start error:", error);
+
+        stopRecognition();
+
+        addMessage(
+            "Could not start the microphone. Please try again.",
+            "ai"
+        );
+
+        setStatus("MICROPHONE ERROR");
+    }
+}
+
+// Connect microphone button
+if (micBtn) {
+    micBtn.addEventListener("click", startVoiceInput);
+}
+
+// ===== 6. CAMERA =====
+
+function openCamera() {
+    if (!imageInput) {
+        addMessage(
+            "Camera input is missing from the HTML page.",
+            "ai"
+        );
+        return;
+    }
+
+    // Ask mobile devices to use the rear camera
+    imageInput.setAttribute("accept", "image/*");
+    imageInput.setAttribute("capture", "environment");
+
+    imageInput.click();
+}
+
+// Connect camera button
+if (camBtn) {
+    camBtn.addEventListener("click", openCamera);
+}
+
+// Process selected or captured image
+if (imageInput) {
+    imageInput.addEventListener("change", async () => {
+        const file = imageInput.files?.[0];
+
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+            addMessage("Please select an image.", "ai");
+            imageInput.value = "";
+            return;
+        }
+
+        setStatus("PROCESSING IMAGE...");
+
+        try {
+            const base64 = await fileToBase64(file);
+
+            const imageData = {
+                mimeType: file.type,
+                data: base64
+            };
+
+            if (input && !input.value.trim()) {
+                input.value = "Describe this image.";
+            }
+
+            await sendMessage(imageData);
+
+        } catch (error) {
+            console.error("Image error:", error);
+
+            addMessage(
+                "Unable to read the image. Please try again.",
+                "ai"
+            );
+
+            setStatus("IMAGE ERROR");
+        }
+
+        // Allow selecting the same image again
+        imageInput.value = "";
+    });
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            const result = reader.result;
+
+            if (typeof result !== "string") {
+                reject(new Error("Unable to read image."));
+                return;
+            }
+
+            // Remove the data:image/...;base64, prefix
+            resolve(result.split(",")[1]);
+        };
+
+        reader.onerror = () => {
+            reject(new Error("Image file read failed."));
+        };
+
+        reader.readAsDataURL(file);
+    });
+}
+
+// ===== 7. LOCAL COMMANDS =====
 
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
 
-    // 1. Time
+    // Time
     if (/\b(time|clock)\b/.test(t)) {
         return "Current time: " +
-            new Date().toLocaleTimeString();
+            new Date().toLocaleTimeString("en-IN");
     }
 
-    // 2. Date
+    // Date
     if (/\b(date|today)\b/.test(t)) {
         return "Today's date: " +
-            new Date().toLocaleDateString();
+            new Date().toLocaleDateString("en-IN");
     }
 
-    // 3. Day
+    // Day
     if (/\b(day|weekday)\b/.test(t)) {
         return "Today is " +
             new Date().toLocaleDateString("en-IN", {
@@ -92,73 +363,56 @@ async function handleTools(text) {
             });
     }
 
-    // 4. Google
-    if (t === "open google") {
-        window.open("https://www.google.com", "_blank");
-        return "Opening Google.";
+    // Open websites
+    const websites = {
+        "open google": "https://www.google.com",
+        "open youtube": "https://www.youtube.com",
+        "open gmail": "https://mail.google.com",
+        "open facebook": "https://www.facebook.com",
+        "open instagram": "https://www.instagram.com",
+        "open whatsapp": "https://web.whatsapp.com"
+    };
+
+    if (websites[t]) {
+        window.open(websites[t], "_blank");
+        return "Opening " + t.replace("open ", "") + ".";
     }
 
-    // 5. YouTube
-    if (t === "open youtube") {
-        window.open("https://www.youtube.com", "_blank");
-        return "Opening YouTube.";
-    }
-
-    // 6. Gmail
-    if (t === "open gmail") {
-        window.open("https://mail.google.com", "_blank");
-        return "Opening Gmail.";
-    }
-
-    // 7. Facebook
-    if (t === "open facebook") {
-        window.open("https://www.facebook.com", "_blank");
-        return "Opening Facebook.";
-    }
-
-    // 8. Instagram
-    if (t === "open instagram") {
-        window.open("https://www.instagram.com", "_blank");
-        return "Opening Instagram.";
-    }
-
-    // 9. WhatsApp
-    if (t === "open whatsapp") {
-        window.open("https://web.whatsapp.com", "_blank");
-        return "Opening WhatsApp.";
-    }
-
-    // 10. Google search
+    // Google search
     if (t.startsWith("search for ")) {
-        const q = t.slice(11).trim();
+        const query = t.slice(11).trim();
 
-        if (!q) return "Please enter something to search.";
+        if (!query) {
+            return "Please enter something to search.";
+        }
 
         window.open(
             "https://www.google.com/search?q=" +
-            encodeURIComponent(q),
+            encodeURIComponent(query),
             "_blank"
         );
 
-        return "Searching Google for " + q;
+        return "Searching Google for " + query;
     }
 
-    // 11. YouTube search
+    // YouTube search
     if (t.startsWith("play ")) {
-        const q = t.slice(5).trim();
+        const query = t.slice(5).trim();
 
-        if (!q) return "Please enter something to search.";
+        if (!query) {
+            return "Please enter something to search.";
+        }
 
         window.open(
             "https://www.youtube.com/results?search_query=" +
-            encodeURIComponent(q),
+            encodeURIComponent(query),
             "_blank"
         );
 
-        return "Searching YouTube for " + q;
+        return "Searching YouTube for " + query;
     }
 
-    // 12. Calculator
+    // Calculator
     if (t.startsWith("calculate ")) {
         const expression = t.slice(10).trim();
 
@@ -179,7 +433,7 @@ async function handleTools(text) {
         }
     }
 
-    // 13. Battery
+    // Battery
     if (t.includes("battery")) {
         if (!navigator.getBattery) {
             return "Battery information is unavailable.";
@@ -195,14 +449,14 @@ async function handleTools(text) {
         }
     }
 
-    // 14. Internet
+    // Internet
     if (t.includes("internet") || t.includes("connection")) {
         return navigator.onLine
             ? "Internet connection is online."
             : "Internet connection is offline.";
     }
 
-    // 15. Greeting
+    // Greeting
     if (/^(hello|hi|hey)\b/.test(t)) {
         return "Hello! JARVIS is online. How can I help you?";
     }
@@ -210,7 +464,7 @@ async function handleTools(text) {
     return null;
 }
 
-// ===== 6. GEMINI AI CONNECTION =====
+// ===== 8. GEMINI AI CONNECTION =====
 
 async function askGemini(message, imageData = null) {
     if (!API_KEY) {
@@ -221,6 +475,7 @@ async function askGemini(message, imageData = null) {
         }
 
         API_KEY = API_KEY.trim();
+
         localStorage.setItem("jarvis_key", API_KEY);
     }
 
@@ -244,7 +499,11 @@ async function askGemini(message, imageData = null) {
     ];
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    const timeout = setTimeout(
+        () => controller.abort(),
+        45000
+    );
 
     try {
         const response = await fetch(API_URL, {
@@ -255,17 +514,21 @@ async function askGemini(message, imageData = null) {
             },
             body: JSON.stringify({
                 contents: contents,
+
                 systemInstruction: {
                     parts: [{
-                        text: "You are JARVIS, a helpful personal AI assistant. " +
-                              "Answer clearly, accurately and concisely."
+                        text:
+                            "You are JARVIS, a helpful personal AI assistant. " +
+                            "Answer clearly, accurately and concisely."
                     }]
                 },
+
                 generationConfig: {
                     temperature: 0.7,
                     maxOutputTokens: 1024
                 }
             }),
+
             signal: controller.signal
         });
 
@@ -273,8 +536,8 @@ async function askGemini(message, imageData = null) {
 
         if (!response.ok) {
             throw new Error(
-                data.error?.message || "Gemini API error: " +
-                response.status
+                data.error?.message ||
+                "Gemini API error: " + response.status
             );
         }
 
@@ -289,7 +552,7 @@ async function askGemini(message, imageData = null) {
             );
         }
 
-        // Save conversation without image data
+        // Save conversation text only
         chatHistory.push({
             role: "user",
             parts: [{ text: message }]
@@ -300,7 +563,7 @@ async function askGemini(message, imageData = null) {
             parts: [{ text: answer }]
         });
 
-        // Keep recent conversation only
+        // Keep recent messages
         chatHistory = chatHistory.slice(-12);
 
         localStorage.setItem(
@@ -322,9 +585,11 @@ async function askGemini(message, imageData = null) {
     }
 }
 
-// ===== 7. MAIN MESSAGE PROCESSOR =====
+// ===== 9. MAIN MESSAGE PROCESSOR =====
 
 async function sendMessage(imageData = null) {
+    if (!input) return;
+
     const message = input.value.trim();
 
     if ((!message && !imageData) || busy) return;
@@ -335,7 +600,10 @@ async function sendMessage(imageData = null) {
     }
 
     busy = true;
-    sendBtn.disabled = true;
+
+    if (sendBtn) {
+        sendBtn.disabled = true;
+    }
 
     if (message) {
         addMessage(message, "user");
@@ -345,7 +613,6 @@ async function sendMessage(imageData = null) {
     setStatus("PROCESSING...");
 
     try {
-        // Run local commands first
         const toolResult = imageData
             ? null
             : await handleTools(message);
@@ -362,6 +629,7 @@ async function sendMessage(imageData = null) {
         }
 
         addMessage(answer, "ai");
+
         speak(answer);
 
         setStatus("SYSTEM READY");
@@ -378,164 +646,191 @@ async function sendMessage(imageData = null) {
 
     } finally {
         busy = false;
-        sendBtn.disabled = false;
-        input.focus();
+
+        if (sendBtn) {
+            sendBtn.disabled = false;
+        }
+
+        if (input) {
+            input.focus();
+        }
     }
 }
 
-// ===== 8. EXECUTE BUTTON =====
+// ===== 10. SEND BUTTON =====
 
-sendBtn.addEventListener("click", () => {
-    sendMessage();
-});
-
-// Press Enter to send
-input.addEventListener("keydown", event => {
-    if (event.key === "Enter") {
+if (sendBtn) {
+    sendBtn.addEventListener("click", () => {
         sendMessage();
-    }
-});
-    
-// ===== WAKE WORD ENGINE =====
-
-let wakeWordEnabled = false;
-let wakeWordTimeout = null;
-
-const WAKE_WORD = "hey jarvis";
-
-// Toggle Wake Word
-function toggleWakeWord() {
-
-    wakeWordEnabled = !wakeWordEnabled;
-
-    const btn = document.getElementById('wake-btn');
-    const status = document.getElementById('wake-status');
-
-    if (wakeWordEnabled) {
-
-        if (btn) btn.classList.add('active');
-
-        if (status) {
-            status.innerText = "LISTENING FOR 'HEY JARVIS'...";
-            status.style.color = "#00ff00";
-        }
-
-        startContinuousListening();
-
-    } else {
-
-        if (btn) btn.classList.remove('active');
-
-        if (status) {
-            status.innerText = "WAKE: OFF";
-            status.style.color = "#888";
-        }
-
-        stopContinuousListening();
-    }
+    });
 }
 
+// Enter to send
+if (input) {
+    input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+}
 
-// Start Continuous Listening
-function startContinuousListening() {
+// ===== 11. CLEAR CHAT =====
 
-    if (!rec) {
-        console.error("Speech recognition is not available.");
+if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+        if (!confirm("Clear all JARVIS chat history?")) {
+            return;
+        }
+
+        chatHistory = [];
+
+        localStorage.removeItem("jarvis_history");
+
+        if (chat) {
+            chat.innerHTML = "";
+        }
+
+        addMessage(
+            "Chat cleared. JARVIS is ready.",
+            "ai"
+        );
+
+        setStatus("SYSTEM READY");
+    });
+}
+
+// ===== 12. WAKE WORD ENGINE =====
+
+function startWakeWordListening() {
+    const SpeechRecognition = getSpeechRecognition();
+
+    if (!SpeechRecognition) {
+        addMessage(
+            "Wake word recognition is not supported in this browser.",
+            "ai"
+        );
         return;
     }
 
     if (!wakeWordEnabled) return;
 
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = "en-US";
+    stopRecognition();
 
-    rec.onresult = (event) => {
+    recognition = new SpeechRecognition();
 
+    recognition.lang = "en-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    isListening = true;
+
+    setStatus("LISTENING FOR HEY JARVIS");
+
+    recognition.onresult = event => {
         let transcript = "";
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-
-            transcript += event.results[i][0].transcript + " ";
+        for (let i = event.resultIndex;
+             i < event.results.length;
+             i++) {
+            transcript +=
+                event.results[i][0].transcript + " ";
         }
 
         transcript = transcript.toLowerCase().trim();
 
-        console.log("Heard:", transcript);
-
         if (transcript.includes(WAKE_WORD)) {
-
-            console.log("Wake Word Detected!");
-
-            // Stop listening temporarily
             wakeWordEnabled = false;
 
-            rec.stop();
+            stopRecognition();
 
-            speak("Yes Boss?");
+            setStatus("JARVIS ACTIVATED");
 
-            if (typeof setJarvisVisualState === 'function') {
-                setJarvisVisualState('LISTENING');
-            }
+            speak("Yes, how can I help?");
 
-            const status = document.getElementById('wake-status');
-
-            if (status) {
-                status.innerText = "JARVIS ACTIVATED";
-                status.style.color = "#00ff00";
-            }
-
-            // Restart wake word detection after 5 seconds
-            clearTimeout(wakeWordTimeout);
-
-            wakeWordTimeout = setTimeout(() => {
-
-                if (!wakeWordEnabled) return;
-
-                startContinuousListening();
-
-            }, 5000);
+            // Start command listening after response
+            setTimeout(() => {
+                startVoiceInput();
+            }, 1500);
         }
     };
 
-    rec.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
+    recognition.onerror = event => {
+        console.error("Wake word error:", event.error);
+        stopRecognition();
+        setStatus("WAKE WORD ERROR");
     };
 
-    rec.onend = () => {
+    recognition.onend = () => {
+        isListening = false;
 
         if (wakeWordEnabled) {
+            clearTimeout(wakeWordRestartTimer);
 
-            setTimeout(() => {
-
+            wakeWordRestartTimer = setTimeout(() => {
                 if (wakeWordEnabled) {
-                    try {
-                        rec.start();
-                    } catch (error) {
-                        console.log("Recognition restart:", error);
-                    }
+                    startWakeWordListening();
                 }
-
-            }, 500);
+            }, 1000);
         }
     };
 
     try {
-        rec.start();
+        recognition.start();
     } catch (error) {
-        console.log("Recognition already running:", error);
+        console.error("Wake word start error:", error);
+        stopRecognition();
     }
 }
 
+function toggleWakeWord() {
+    wakeWordEnabled = !wakeWordEnabled;
 
-// Stop Continuous Listening
-function stopContinuousListening() {
+    const wakeBtn = document.getElementById("wake-btn");
+    const wakeStatus = document.getElementById("wake-status");
 
-    clearTimeout(wakeWordTimeout);
+    if (wakeWordEnabled) {
+        if (wakeBtn) {
+            wakeBtn.classList.add("active");
+        }
 
-    if (rec) {
-        rec.onend = null;
-        rec.stop();
+        if (wakeStatus) {
+            wakeStatus.textContent =
+                "LISTENING FOR HEY JARVIS...";
+            wakeStatus.style.color = "#00ff00";
+        }
+
+        startWakeWordListening();
+
+    } else {
+        if (wakeBtn) {
+            wakeBtn.classList.remove("active");
+        }
+
+        if (wakeStatus) {
+            wakeStatus.textContent = "WAKE: OFF";
+            wakeStatus.style.color = "#888";
+        }
+
+        clearTimeout(wakeWordRestartTimer);
+        stopRecognition();
+
+        setStatus("SYSTEM READY");
     }
 }
+
+// Connect optional wake word button
+const wakeBtn = document.getElementById("wake-btn");
+
+if (wakeBtn) {
+    wakeBtn.addEventListener("click", toggleWakeWord);
+}
+
+// ===== 13. STARTUP =====
+
+restoreChat();
+
+setStatus("SYSTEM READY");
+
+console.log("J.A.R.V.I.S loaded successfully.");
 
