@@ -1,33 +1,38 @@
 /* ==========================================
-   J.A.R.V.I.S AI ASSISTANT
-   Gemini + Voice + Camera + Memory + Weather
-   Complete & Fixed Version
+   J.A.R.V.I.S PERSONAL AI ASSISTANT
+   Gemini AI + Voice + Camera + Memory + Weather
 ========================================== */
 
-// ===== 1. CONFIGURATION ===== //
-const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"];
+// ===== 1. CONFIGURATION =====
 
-function getApiUrl(modelName) {
-    return "https://googleapis.com" + modelName + ":generateContent";
-}
+const MODEL = "gemini-2.5-flash";
 
-let API_KEY = localStorage.getItem("jarvis_key") || "";
+const GEMINI_URL =
+  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+
+let API_KEY = sessionStorage.getItem("jarvis_key") || "";
 
 let chatHistory = [];
+
 try {
-    chatHistory = JSON.parse(localStorage.getItem("jarvis_history") || "[]");
-    if (!Array.isArray(chatHistory)) chatHistory = [];
+  const saved = JSON.parse(
+    localStorage.getItem("jarvis_history") || "[]"
+  );
+
+  chatHistory = Array.isArray(saved) ? saved : [];
 } catch {
-    chatHistory = [];
+  chatHistory = [];
 }
 
 let busy = false;
 let recognition = null;
 let isListening = false;
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = ms =>
+  new Promise(resolve => setTimeout(resolve, ms));
 
 // ===== 2. HTML ELEMENTS =====
+
 const input = document.getElementById("msg");
 const sendBtn = document.getElementById("send");
 const micBtn = document.getElementById("mic-btn");
@@ -37,403 +42,670 @@ const imageInput = document.getElementById("img-input");
 const chat = document.getElementById("chat");
 const statusElement = document.getElementById("system-status");
 
-// ===== 3. DISPLAY MESSAGES =====
+// ===== 3. MESSAGE DISPLAY =====
+
 function addMessage(message, type = "ai") {
-    if (!chat) return;
+  if (!chat) return;
 
-    const div = document.createElement("div");
-    div.className = "msg " + type;
-    div.textContent = (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message;
+  const div = document.createElement("div");
+  div.className = "msg " + type;
 
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
+  div.textContent =
+    (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") +
+    message;
+
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function setStatus(message) {
-    if (statusElement) {
-        statusElement.textContent = message;
-    }
+  if (statusElement) {
+    statusElement.textContent = message;
+  }
 }
 
 function saveHistory() {
-    try {
-        const trimmed = chatHistory.slice(-20);
-        localStorage.setItem("jarvis_history", JSON.stringify(trimmed));
-    } catch (e) {
-        console.warn("Could not save history:", e);
-    }
+  try {
+    chatHistory = chatHistory.slice(-20);
+
+    localStorage.setItem(
+      "jarvis_history",
+      JSON.stringify(chatHistory)
+    );
+  } catch (error) {
+    console.warn("History save failed:", error);
+  }
 }
 
 function restoreChat() {
-    if (!chat) return;
-    chat.innerHTML = "";
+  if (!chat) return;
 
-    if (chatHistory.length === 0) {
-        addMessage("Systems online. How may I assist you?", "ai");
-        return;
+  chat.innerHTML = "";
+
+  if (!chatHistory.length) {
+    addMessage(
+      "Systems online. How may I assist you?",
+      "ai"
+    );
+    return;
+  }
+
+  chatHistory.forEach(item => {
+    const message = item.parts
+      ?.map(part => part.text || "")
+      .join("");
+
+    if (message) {
+      addMessage(
+        message,
+        item.role === "user" ? "user" : "ai"
+      );
     }
-
-    chatHistory.forEach(item => {
-        const text = item.parts?.map(part => part.text || "").join("");
-        if (!text) return;
-        addMessage(text, item.role === "user" ? "user" : "ai");
-    });
+  });
 }
 
 // ===== 4. VOICE OUTPUT =====
+
 function speak(text) {
-    if (!("speechSynthesis" in window)) return;
+  if (!("speechSynthesis" in window)) return;
 
-    window.speechSynthesis.cancel();
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-IN";
-    speech.rate = 1;
-    speech.pitch = 1;
+  window.speechSynthesis.cancel();
 
-    speech.onstart = () => setStatus("SPEAKING...");
-    speech.onend = () => setStatus("SYSTEM READY");
+  const speech = new SpeechSynthesisUtterance(text);
 
-    window.speechSynthesis.speak(speech);
+  speech.lang = "en-IN";
+  speech.rate = 1;
+  speech.pitch = 1;
+
+  speech.onstart = () => setStatus("SPEAKING...");
+  speech.onend = () => setStatus("SYSTEM READY");
+
+  window.speechSynthesis.speak(speech);
 }
 
-// ===== 5. SPEECH RECOGNITION =====
+// ===== 5. VOICE INPUT =====
+
 function getSpeechRecognition() {
-    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  return (
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition ||
+    null
+  );
 }
 
 function stopRecognition() {
-    if (recognition) {
-        try {
-            recognition.onresult = null;
-            recognition.onerror = null;
-            recognition.onend = null;
-            recognition.stop();
-        } catch (error) {
-            console.log("Recognition stop:", error);
-        }
-    }
+  if (recognition) {
+    const oldRecognition = recognition;
     recognition = null;
-    isListening = false;
-    if (micBtn) micBtn.classList.remove("active");
+
+    try {
+      oldRecognition.stop();
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  isListening = false;
+
+  if (micBtn) {
+    micBtn.classList.remove("active");
+  }
 }
 
 function startVoiceInput() {
-    const SpeechRecognition = getSpeechRecognition();
+  const SpeechRecognition = getSpeechRecognition();
 
-    if (!SpeechRecognition) {
-        addMessage("Voice recognition is not supported in this browser. Try Google Chrome.", "ai");
-        setStatus("VOICE NOT SUPPORTED");
-        return;
-    }
+  if (!SpeechRecognition) {
+    addMessage(
+      "Voice input is not supported. Try a supported browser.",
+      "ai"
+    );
+    setStatus("VOICE NOT SUPPORTED");
+    return;
+  }
 
-    if (isListening) {
-        stopRecognition();
-        setStatus("SYSTEM READY");
-        return;
-    }
+  if (isListening) {
+    stopRecognition();
+    setStatus("SYSTEM READY");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+
+  recognition.lang = "en-IN";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  isListening = true;
+
+  if (micBtn) micBtn.classList.add("active");
+
+  setStatus("LISTENING...");
+
+  recognition.onresult = event => {
+    const transcript =
+      event.results[0][0].transcript.trim();
+
+    if (!transcript) return;
+
+    if (input) input.value = transcript;
 
     stopRecognition();
-    recognition = new SpeechRecognition();
-    recognition.lang = "en-IN";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    setStatus("VOICE RECEIVED");
 
-    isListening = true;
-    if (micBtn) micBtn.classList.add("active");
-    setStatus("LISTENING...");
+    sendMessage();
+  };
 
-    recognition.onresult = event => {
-        const transcript = event.results[0][0].transcript.trim();
-        if (!transcript) return;
-        if (input) input.value = transcript;
-        stopRecognition();
-        setStatus("VOICE RECEIVED");
-        sendMessage();
-    };
+  recognition.onerror = event => {
+    stopRecognition();
 
-    recognition.onerror = event => {
-        console.error("Voice error:", event.error);
-        stopRecognition();
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-            addMessage("Microphone permission denied. Allow microphone access in Chrome settings.", "ai");
-        } else if (event.error === "no-speech") {
-            addMessage("I did not hear anything. Tap the microphone and try again.", "ai");
-        } else {
-            addMessage("Voice recognition error: " + event.error, "ai");
-        }
-        setStatus("VOICE ERROR");
-    };
+    addMessage(
+      "Voice error: " + event.error,
+      "ai"
+    );
 
-    recognition.onend = () => {
-        isListening = false;
-        if (micBtn) micBtn.classList.remove("active");
-        if (statusElement && statusElement.textContent === "LISTENING...") {
-            setStatus("SYSTEM READY");
-        }
-    };
+    setStatus("VOICE ERROR");
+  };
 
-    try {
-        recognition.start();
-    } catch (error) {
-        console.error("Recognition start error:", error);
-        stopRecognition();
-        addMessage("Could not start the microphone. Please try again.", "ai");
-        setStatus("MICROPHONE ERROR");
+  recognition.onend = () => {
+    isListening = false;
+
+    if (micBtn) {
+      micBtn.classList.remove("active");
     }
-}
 
-if (micBtn) micBtn.addEventListener("click", startVoiceInput);
+    if (statusElement?.textContent === "LISTENING...") {
+      setStatus("SYSTEM READY");
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch (error) {
+    stopRecognition();
+
+    addMessage(
+      "Could not start microphone. Try again.",
+      "ai"
+    );
+
+    setStatus("MICROPHONE ERROR");
+  }
+}
 
 // ===== 6. CAMERA =====
+
 function openCamera() {
-    if (!imageInput) {
-        addMessage("Camera input is missing from the HTML page.", "ai");
-        return;
-    }
-    imageInput.setAttribute("accept", "image/*");
-    imageInput.setAttribute("capture", "environment");
-    imageInput.click();
-}
+  if (!imageInput) {
+    addMessage("Image input is missing from HTML.", "ai");
+    return;
+  }
 
-if (camBtn) camBtn.addEventListener("click", openCamera);
-
-if (imageInput) {
-    imageInput.addEventListener("change", async () => {
-        const file = imageInput.files?.[0];
-        if (!file) return;
-
-        if (!file.type.startsWith("image/")) {
-            addMessage("Please select an image.", "ai");
-            imageInput.value = "";
-            return;
-        }
-
-        setStatus("PROCESSING IMAGE...");
-        try {
-            const base64 = await fileToBase64(file);
-            const imageData = { mimeType: file.type, data: base64 };
-
-            if (input && !input.value.trim()) {
-                input.value = "Describe this image.";
-            }
-            await sendMessage(imageData);
-        } catch (error) {
-            console.error("Image error:", error);
-            addMessage("Unable to read the image. Please try again.", "ai");
-            setStatus("IMAGE ERROR");
-        }
-        imageInput.value = "";
-    });
+  imageInput.accept = "image/*";
+  imageInput.setAttribute("capture", "environment");
+  imageInput.click();
 }
 
 function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = reader.result;
-            if (typeof result !== "string") {
-                reject(new Error("Unable to read image."));
-                return;
-            }
-            resolve(result.split(",")[1]);
-        };
-        reader.onerror = () => reject(new Error("Image file read failed."));
-        reader.readAsDataURL(file);
-    });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = reader.result;
+
+      if (typeof result !== "string") {
+        reject(new Error("Image reading failed."));
+        return;
+      }
+
+      resolve(result.split(",")[1]);
+    };
+
+    reader.onerror = () =>
+      reject(new Error("Could not read image."));
+
+    reader.readAsDataURL(file);
+  });
 }
 
-// ===== 7. LIVE WEATHER HELPER =====
-async function getWeather(userPrompt) {
-    const cleanPrompt = userPrompt.replace(/\b(today|tomorrow|right now|please)\b/gi, "").trim();
-    const match = cleanPrompt.match(/(?:weather|temperature)\s+(?:in|for|at)\s+([a-zA-Z\s]+)/i);
-    const city = match ? match[1].trim() : "Vijayawada";
+async function processImage() {
+  const file = imageInput?.files?.[0];
 
-    try {
-        setStatus("FETCHING WEATHER...");
+  if (!file) return;
 
-        const geoUrl = "https://open-meteo.com" + encodeURIComponent(city) + "&count=1&format=json";
-        const geoRes = await fetch(geoUrl);
-        const geoData = await geoRes.json();
+  if (!file.type.startsWith("image/")) {
+    addMessage("Please select a valid image.", "ai");
+    imageInput.value = "";
+    return;
+  }
 
-        if (!geoData.results || geoData.results.length === 0) {
-            return "I could not find weather data for " + city + ".";
-        }
+  if (file.size > 10 * 1024 * 1024) {
+    addMessage("Please choose an image smaller than 10 MB.", "ai");
+    imageInput.value = "";
+    return;
+  }
 
-        const { latitude, longitude, name, country } = geoData.results[0];
+  try {
+    setStatus("PROCESSING IMAGE...");
 
-        const weatherUrl = "https://open-meteo.com" + latitude + "&longitude=" + longitude + "&current_weather=true";
-        const weatherRes = await fetch(weatherUrl);
-        const weatherData = await weatherRes.json();
-        const current = weatherData.current_weather;
+    const base64 = await fileToBase64(file);
 
-        return "The current temperature in " + name + ", " + country + " is " + current.temperature + "°C with wind speeds of " + current.windspeed + " km/h.";
-    } catch (error) {
-        console.error("Weather fetch error:", error);
-        return "Unable to reach the weather satellite right now. Please try again.";
+    const imageData = {
+      mimeType: file.type,
+      data: base64
+    };
+
+    if (input && !input.value.trim()) {
+      input.value = "Describe this image.";
     }
+
+    await sendMessage(imageData);
+
+  } catch (error) {
+    addMessage(error.message, "ai");
+    setStatus("IMAGE ERROR");
+
+  } finally {
+    imageInput.value = "";
+  }
+}
+
+// ===== 7. WEATHER =====
+
+async function getWeather(promptText) {
+  const match = promptText.match(
+    /(?:weather|temperature|forecast)\s+(?:in|for|at)\s+([a-zA-Z\s]+?)(?:\s+(?:today|tomorrow|now)|[?.!]|$)/i
+  );
+
+  const city = match ? match[1].trim() : "Vijayawada";
+
+  try {
+    setStatus("FETCHING WEATHER...");
+
+    const geoURL =
+      "https://geocoding-api.open-meteo.com/v1/search?" +
+      new URLSearchParams({
+        name: city,
+        count: "1",
+        language: "en",
+        format: "json"
+      });
+
+    const geoResponse = await fetch(geoURL);
+
+    if (!geoResponse.ok) {
+      throw new Error("Location service unavailable.");
+    }
+
+    const geoData = await geoResponse.json();
+
+    if (!geoData.results?.length) {
+      return "I could not find " + city + ".";
+    }
+
+    const place = geoData.results[0];
+
+    const weatherURL =
+      "https://api.open-meteo.com/v1/forecast?" +
+      new URLSearchParams({
+        latitude: place.latitude,
+        longitude: place.longitude,
+        current: "temperature_2m,wind_speed_10m",
+        timezone: "auto"
+      });
+
+    const weatherResponse = await fetch(weatherURL);
+
+    if (!weatherResponse.ok) {
+      throw new Error("Weather service unavailable.");
+    }
+
+    const weatherData = await weatherResponse.json();
+
+    const current = weatherData.current;
+
+    if (!current) {
+      throw new Error("Weather information unavailable.");
+    }
+
+    return (
+      "Current weather in " +
+      place.name + ", " + place.country +
+      ": Temperature " +
+      current.temperature_2m + "°C. Wind speed " +
+      current.wind_speed_10m + " km/h."
+    );
+
+  } catch (error) {
+    console.error("Weather error:", error);
+    return "Unable to get weather right now.";
+  }
 }
 
 // ===== 8. LOCAL COMMANDS =====
-async function handleTools(text) {
-    const t = text.toLowerCase().trim();
 
-    // 1. Weather
-    if (/\b(weather|temperature|forecast)\b/.test(t)) {
-        return await getWeather(text);
+async function handleTools(command) {
+  const t = command.toLowerCase().trim();
+
+  // WEATHER
+  if (/\b(weather|temperature|forecast)\b/.test(t)) {
+    return await getWeather(command);
+  }
+
+  // TIME
+  if (/\b(time|clock)\b/.test(t)) {
+    return "Current time: " +
+      new Date().toLocaleTimeString("en-IN");
+  }
+
+  // DATE
+  if (/\b(date|today's date|what day is today)\b/.test(t)) {
+    return "Today's date: " +
+      new Date().toLocaleDateString("en-IN");
+  }
+
+  // DAY
+  if (/\b(day of week|weekday)\b/.test(t)) {
+    return "Today is " +
+      new Date().toLocaleDateString("en-IN", {
+        weekday: "long"
+      });
+  }
+
+  // OPEN WEBSITES
+  const websites = {
+    "open google": "https://www.google.com",
+    "open youtube": "https://www.youtube.com",
+    "open gmail": "https://mail.google.com",
+    "open github": "https://github.com",
+    "open instagram": "https://www.instagram.com",
+    "open whatsapp": "https://www.whatsapp.com"
+  };
+
+  for (const [cmd, url] of Object.entries(websites)) {
+    if (t === cmd || t.includes(cmd)) {
+      const siteName = cmd.replace("open ", "");
+
+      const newWindow = window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+      if (!newWindow) {
+        return "Your browser blocked the popup. Please allow popups for this page.";
+      }
+
+      return "Opening " + siteName + "...";
+    }
+  }
+
+  return null;
+}
+
+// ===== 9. GEMINI AI =====
+
+async function callGemini(contents) {
+  if (!API_KEY) {
+    const enteredKey = prompt(
+      "Enter your Gemini API key:"
+    );
+
+    if (!enteredKey?.trim()) {
+      throw new Error("Gemini API key is required.");
     }
 
-    // 2. Time
-    if (/\b(time|clock)\b/.test(t)) {
-        return "Current time: " + new Date().toLocaleTimeString("en-IN");
+    API_KEY = enteredKey.trim();
+
+    // Keep the key for this browser session only.
+    sessionStorage.setItem("jarvis_key", API_KEY);
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(
+        GEMINI_URL,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": API_KEY
+          },
+
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{
+                text:
+                  "You are J.A.R.V.I.S., a helpful, intelligent and concise personal AI assistant. Reply naturally and clearly."
+              }]
+            },
+
+            contents
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const reply =
+          data.candidates?.[0]?.content?.parts
+            ?.map(part => part.text || "")
+            .join("")
+            .trim();
+
+        if (!reply) {
+          throw new Error("AI returned an empty response.");
+        }
+
+        return reply;
+      }
+
+      if (
+        response.status === 429 ||
+        response.status === 503
+      ) {
+        if (attempt < 3) {
+          setStatus("RETRYING AI CONNECTION...");
+          await sleep(1000 * attempt);
+          continue;
+        }
+      }
+
+      throw new Error(
+        data.error?.message ||
+        "Gemini API error: " + response.status
+      );
+
+    } catch (error) {
+      if (attempt === 3) throw error;
+
+      if (
+        !String(error.message).includes("fetch")
+      ) {
+        throw error;
+      }
+
+      await sleep(1000);
     }
+  }
 
-    // 3. Date
-    if (/\b(date|today's date|what day is today)\b/.test(t)) {
-        return "Today's date: " + new Date().toLocaleDateString("en-IN");
-    }
+  throw new Error("AI connection failed.");
+}
 
-    // 4. Day of week
-    if (/\b(day of week|weekday)\b/.test(t)) {
-        return "Today is " + new Date().toLocaleDateString("en-IN", { weekday: "long" });
-    }
+// ===== 10. MAIN SEND FUNCTION =====
 
-    // 5. Open websites (Mobile popup-blocker safe)
-    const websites = {
-        "open google": "https://google.com",
-        "open youtube": "https://youtube.com",
-        "open gmail": "https://google.com",
-        "open github": "https://github.com",
-        "open instagram": "https://instagram.com",
-        "open whatsapp": "https://whatsapp.com"
-    };
-
-    for (const [cmd, url] of Object.entries(websites)) {
-        if (t.includes(cmd)) {
-            const siteName = cmd.replace("open ", "");
-           with caution.
-setTimeout(() => {
-const win = window.open(url, "_blank");
-if (!win) {
-window.location.href = url;
-}
-}, 800);
-return "Opening " + siteName + "...";
-}
-}
-return null;
-}
-// ===== 9. GEMINI API WITH RETRY & FALLBACK =====
-async function callGeminiWithRetry(contentsPayload) {
-if (!API_KEY) {
-const enteredKey = prompt("Enter your Gemini API key:");
-if (!enteredKey) throw new Error("API key is required.");
-API_KEY = enteredKey.trim();
-localStorage.setItem("jarvis_key", API_KEY);
-}
-for (const model of MODELS) {
-const url = getApiUrl(model) + "?key=" + API_KEY;
-for (let attempt = 1; attempt <= 3; attempt++) {
-try {
-const response = await fetch(url, {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({
-systemInstruction: {
-parts: [{ text: "You are J.A.R.V.I.S., an intelligent, concise, and helpful AI assistant." }]
-},
-contents: contentsPayload
-})
-});
-if (response.ok) {
-const data = await response.json();
-const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-if (!reply) throw new Error("Empty response from AI.");
-return reply;
-}
-if (response.status === 503 || response.status === 429) {
-setStatus("HIGH DEMAND - RETRYING (" + attempt + "/3)...");
-if (attempt < 3) {
-await sleep(1000 * Math.pow(2, attempt - 1));
-continue;
-}
-setStatus("SWITCHING ENGINE...");
-break;
-}
-const errData = await response.json().catch(() => ({}));
-throw new Error(errData.error?.message || "HTTP Error " + response.status);
-} catch (err) {
-if (attempt === 3 && model === MODELS[MODELS.length - 1]) {
-throw err;
-}
-}
-}
-}
-throw new Error("All AI engines are currently overloaded. Please try again in a moment.");
-}
-// ===== 10. MAIN SEND HANDLER =====
 async function sendMessage(imageData = null) {
-if (busy) return;
-const text = input ? input.value.trim() : "";
-if (!text && !imageData) return;
-busy = true;
-if (input) input.value = "";
-addMessage(text || "", "user");
-try {
-if (!imageData) {
-const toolReply = await handleTools(text);
-if (toolReply) {
-addMessage(toolReply, "ai");
-speak(toolReply);
-setStatus("SYSTEM READY");
-busy = false;
-return;
+  if (busy) return;
+
+  const message = input?.value.trim() || "";
+
+  if (!message && !imageData) return;
+
+  busy = true;
+
+  if (input) input.value = "";
+
+  addMessage(
+    message || "Image attached",
+    "user"
+  );
+
+  try {
+    // Local commands
+    if (!imageData) {
+      const toolReply = await handleTools(message);
+
+      if (toolReply) {
+        addMessage(toolReply, "ai");
+        speak(toolReply);
+        setStatus("SYSTEM READY");
+        return;
+      }
+    }
+
+    setStatus("THINKING...");
+
+    const userParts = [];
+
+    if (message) {
+      userParts.push({ text: message });
+    }
+
+    if (imageData) {
+      userParts.push({
+        inlineData: {
+          mimeType: imageData.mimeType,
+          data: imageData.data
+        }
+      });
+    }
+
+    const requestContents = [
+      ...chatHistory.slice(-10),
+      {
+        role: "user",
+        parts: userParts
+      }
+    ];
+
+    const aiReply = await callGemini(requestContents);
+
+    // Save text history only, not large image data.
+    chatHistory.push({
+      role: "user",
+      parts: [{
+        text: message || "[Image attached]"
+      }]
+    });
+
+    chatHistory.push({
+      role: "model",
+      parts: [{
+        text: aiReply
+      }]
+    });
+
+    saveHistory();
+
+    addMessage(aiReply, "ai");
+    speak(aiReply);
+
+    setStatus("SYSTEM READY");
+
+  } catch (error) {
+    console.error("JARVIS ERROR:", error);
+
+    addMessage(
+      "Error: " + error.message,
+      "ai"
+    );
+
+    setStatus("CONNECTION ERROR");
+
+  } finally {
+    busy = false;
+  }
 }
+
+// ===== 11. CLEAR CHAT =====
+
+function clearChat() {
+  if (busy) return;
+
+  chatHistory = [];
+
+  localStorage.removeItem("jarvis_history");
+
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+
+  stopRecognition();
+
+  restoreChat();
+
+  setStatus("MEMORY CLEARED");
 }
-setStatus("THINKING...");
-const userParts = [];
-if (text) userParts.push({ text });
-if (imageData) {
-userParts.push({
-inlineData: {
-mimeType: imageData.mimeType,
-data: imageData.data
+
+// ===== 12. INITIALIZE BUTTONS =====
+
+function initializeJarvis() {
+  if (sendBtn) {
+    sendBtn.addEventListener("click", sendMessage);
+  }
+
+  if (input) {
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+  }
+
+  if (micBtn) {
+    micBtn.addEventListener(
+      "click",
+      startVoiceInput
+    );
+  }
+
+  if (camBtn) {
+    camBtn.addEventListener(
+      "click",
+      openCamera
+    );
+  }
+
+  if (imageInput) {
+    imageInput.addEventListener(
+      "change",
+      processImage
+    );
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener(
+      "click",
+      clearChat
+    );
+  }
+
+  restoreChat();
+
+  setStatus("SYSTEM READY");
+
+  console.log("J.A.R.V.I.S initialized successfully.");
 }
-});
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeJarvis
+  );
+} else {
+  initializeJarvis();
 }
-const requestContents = [
-...chatHistory.slice(-10),
-{ role: "user", parts: userParts }
-];
-const aiReply = await callGeminiWithRetry(requestContents);
-chatHistory.push({ role: "user", parts: [{ text: text || "" }] });
-chatHistory.push({ role: "model", parts: [{ text: aiReply }] });
-saveHistory();
-addMessage(aiReply, "ai");
-speak(aiReply);
-setStatus("SYSTEM READY");
-} catch (error) {
-console.error("J.A.R.V.I.S. Error:", error);
-addMessage("Error: " + error.message, "ai");
-setStatus("CONNECTION ERROR");
-} finally {
-busy = false;
-}
-}
-// ===== 11. EVENT LISTENERS & INIT =====
-if (sendBtn) sendBtn.addEventListener("click", () => sendMessage());
-if (input) {
-input.addEventListener("keypress", (e) => {
-if (e.key === "Enter") sendMessage();
-});
-}
-if (clearBtn) {
-clearBtn.addEventListener("click", () => {
-chatHistory = [];
-localStorage.removeItem("jarvis_history");
-restoreChat();
-setStatus("MEMORY CLEARED");
-});
-}
-restoreChat();
-setStatus("SYSTEM READY");
