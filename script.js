@@ -395,125 +395,147 @@ input.addEventListener("keydown", event => {
         sendMessage();
     }
 });
+    
+// ===== WAKE WORD ENGINE =====
 
-// ===== 9. MICROPHONE =====
+let wakeWordEnabled = false;
+let wakeWordTimeout = null;
 
-const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
+const WAKE_WORD = "hey jarvis";
 
-if (SpeechRecognition) {
-    const recognition = new SpeechRecognition();
+// Toggle Wake Word
+function toggleWakeWord() {
 
-    recognition.lang = "en-IN";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    wakeWordEnabled = !wakeWordEnabled;
 
-    micBtn.addEventListener("click", () => {
-        try {
-            recognition.start();
-            setStatus("LISTENING...");
-        } catch (error) {
-            addMessage("Microphone is already active.", "ai");
+    const btn = document.getElementById('wake-btn');
+    const status = document.getElementById('wake-status');
+
+    if (wakeWordEnabled) {
+
+        if (btn) btn.classList.add('active');
+
+        if (status) {
+            status.innerText = "LISTENING FOR 'HEY JARVIS'...";
+            status.style.color = "#00ff00";
         }
-    });
 
-    recognition.onresult = event => {
-        const transcript =
-            event.results[0][0].transcript;
+        startContinuousListening();
 
-        input.value = transcript;
-        sendMessage();
-    };
+    } else {
 
-    recognition.onerror = event => {
-        setStatus("SYSTEM READY");
-        addMessage(
-            "Microphone error: " + event.error,
-            "ai"
-        );
-    };
+        if (btn) btn.classList.remove('active');
 
-    recognition.onend = () => {
-        if (!busy) setStatus("SYSTEM READY");
-    };
+        if (status) {
+            status.innerText = "WAKE: OFF";
+            status.style.color = "#888";
+        }
 
-} else {
-    micBtn.addEventListener("click", () => {
-        addMessage(
-            "Voice recognition is not supported in this browser.",
-            "ai"
-        );
-    });
+        stopContinuousListening();
+    }
 }
 
-// ===== 10. CAMERA =====
 
-camBtn.addEventListener("click", () => {
-    imageInput.click();
-});
+// Start Continuous Listening
+function startContinuousListening() {
 
-imageInput.addEventListener("change", () => {
-    const file = imageInput.files[0];
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-        addMessage("Please select an image.", "ai");
-        imageInput.value = "";
+    if (!rec) {
+        console.error("Speech recognition is not available.");
         return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-        addMessage("Please choose an image under 5 MB.", "ai");
-        imageInput.value = "";
-        return;
+    if (!wakeWordEnabled) return;
+
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+
+    rec.onresult = (event) => {
+
+        let transcript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+
+            transcript += event.results[i][0].transcript + " ";
+        }
+
+        transcript = transcript.toLowerCase().trim();
+
+        console.log("Heard:", transcript);
+
+        if (transcript.includes(WAKE_WORD)) {
+
+            console.log("Wake Word Detected!");
+
+            // Stop listening temporarily
+            wakeWordEnabled = false;
+
+            rec.stop();
+
+            speak("Yes Boss?");
+
+            if (typeof setJarvisVisualState === 'function') {
+                setJarvisVisualState('LISTENING');
+            }
+
+            const status = document.getElementById('wake-status');
+
+            if (status) {
+                status.innerText = "JARVIS ACTIVATED";
+                status.style.color = "#00ff00";
+            }
+
+            // Restart wake word detection after 5 seconds
+            clearTimeout(wakeWordTimeout);
+
+            wakeWordTimeout = setTimeout(() => {
+
+                if (!wakeWordEnabled) return;
+
+                startContinuousListening();
+
+            }, 5000);
+        }
+    };
+
+    rec.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+    };
+
+    rec.onend = () => {
+
+        if (wakeWordEnabled) {
+
+            setTimeout(() => {
+
+                if (wakeWordEnabled) {
+                    try {
+                        rec.start();
+                    } catch (error) {
+                        console.log("Recognition restart:", error);
+                    }
+                }
+
+            }, 500);
+        }
+    };
+
+    try {
+        rec.start();
+    } catch (error) {
+        console.log("Recognition already running:", error);
     }
+}
 
-    const reader = new FileReader();
 
-    reader.onload = () => {
-        const dataURL = reader.result;
-        const imageData = {
-            mimeType: file.type,
-            data: dataURL.split(",")[1]
-        };
+// Stop Continuous Listening
+function stopContinuousListening() {
 
-        sendMessage(imageData);
-        imageInput.value = "";
-    };
+    clearTimeout(wakeWordTimeout);
 
-    reader.onerror = () => {
-        addMessage("Unable to read the image.", "ai");
-        imageInput.value = "";
-    };
+    if (rec) {
+        rec.onend = null;
+        rec.stop();
+    }
+}
 
-    reader.readAsDataURL(file);
-});
-
-// ===== 11. CLEAR MEMORY =====
-
-clearBtn.addEventListener("click", () => {
-    if (busy) return;
-
-    chatHistory = [];
-
-    localStorage.removeItem("jarvis_history");
-
-    chat.innerHTML = "";
-
-    addMessage(
-        "Memory cleared. JARVIS is ready!",
-        "ai"
-    );
-
-    window.speechSynthesis?.cancel();
-
-    setStatus("SYSTEM READY");
-});
-
-// ===== 12. STARTUP =====
-
-setStatus("SYSTEM READY");
-
-console.log("J.A.R.V.I.S initialized successfully.");
