@@ -55,45 +55,63 @@ function add(message, type) {
 // ===== 5. GEMINI AI ENGINE =====
 
 async function callGemini(promptText) {
-
     if (!API_KEY) {
         throw new Error("Gemini API key is missing.");
     }
 
-    let lastError;
+    let lastError = null;
 
     for (const model of MODELS) {
-
         try {
-
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(API_KEY)}`,
                 {
                     method: "POST",
-
                     headers: {
                         "Content-Type": "application/json"
                     },
-
                     body: JSON.stringify({
-    contents: [{
-        role: "user",
-        parts: [{ text: promptText }]
-    }],
-    generationConfig: {
-        maxOutputTokens: 256,
-        temperature: 0.7
-    }
-})
+                        contents: [{
+                            role: "user",
+                            parts: [{ text: promptText }]
+                        }],
+                        generationConfig: {
+                            maxOutputTokens: 256,
+                            temperature: 0.7
+                        }
+                    })
                 }
             );
 
             const data = await response.json();
 
-            if (!response.ok || data.error) {
-                throw new Error(
-                    data.error?.message || "Gemini API request failed."
+            if (!response.ok) {
+                const errorMessage =
+                    data?.error?.message ||
+                    `HTTP ${response.status}`;
+
+                // Authentication or request errors:
+                // no point switching models
+                if (
+                    response.status === 400 ||
+                    response.status === 401 ||
+                    response.status === 403
+                ) {
+                    throw new Error(errorMessage);
+                }
+
+                // Try the next model on temporary,
+                // unavailable, quota or model errors
+                lastError = new Error(
+                    `${model}: ${errorMessage}`
                 );
+
+                console.warn(
+                    `${model} failed. Trying backup model...`,
+                    errorMessage
+                );
+
+                continue;
             }
 
             const reply = data.candidates?.[0]?.content?.parts
@@ -102,31 +120,46 @@ async function callGemini(promptText) {
                 .trim();
 
             if (!reply) {
-                throw new Error("Gemini returned an empty response.");
+                lastError = new Error(
+                    `${model} returned an empty response.`
+                );
+                continue;
             }
+
+            console.log("JARVIS connected using:", model);
 
             return reply;
 
         } catch (error) {
-
             lastError = error;
 
-            console.error(model + " failed:", error);
+            console.error(
+                `${model} failed:`,
+                error.message
+            );
 
+            // Stop if this is an API key or
+            // invalid request problem
             if (
-                /quota|rate|unavailable|not found|deprecated|high demand|temporar/i
-                .test(error.message)
+                error.message.includes("API key") ||
+                error.message.includes("API_KEY") ||
+                error.message.includes("400") ||
+                error.message.includes("401") ||
+                error.message.includes("403")
             ) {
-                continue;
+                throw error;
             }
 
-            throw error;
+            // Otherwise move to the next backup model
+            continue;
         }
     }
 
-    throw lastError || new Error("All Gemini models failed.");
+    throw new Error(
+        "All Gemini models failed. Please try again later. " +
+        (lastError?.message || "")
+    );
 }
-
 // ===== 6. ASK JARVIS =====
 
 async function askGemini(promptText) {
