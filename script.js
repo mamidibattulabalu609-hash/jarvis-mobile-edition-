@@ -1,6 +1,8 @@
+
 /* =========================================
    J.A.R.V.I.S PERSONAL AI ASSISTANT
-   Gemini + Voice + Wake Word + Camera + Memory
+   Gemini 3.8 Flash + Weather + Voice
+   Wake Word + Camera + Memory
 ========================================= */
 
 // ===== 1. CONFIGURATION =====
@@ -70,9 +72,7 @@ function updateWakeStatus(message, color) {
 
     wakeStatus.textContent = message;
 
-    if (color) {
-        wakeStatus.style.color = color;
-    }
+    if (color) wakeStatus.style.color = color;
 }
 
 // ===== 4. VOICE OUTPUT =====
@@ -83,27 +83,134 @@ function speak(text) {
     window.speechSynthesis.cancel();
 
     const speech = new SpeechSynthesisUtterance(text);
+
     speech.lang = "en-IN";
     speech.rate = 1;
 
     window.speechSynthesis.speak(speech);
 }
 
-// ===== 5. LOCAL COMMANDS =====
+// ===== 5. LIVE WEATHER =====
+
+async function getWeather(location) {
+    const place = location || "Vijayawada";
+
+    setStatus("FETCHING WEATHER...");
+
+    try {
+        const geoURL =
+            "https://geocoding-api.open-meteo.com/v1/search?name=" +
+            encodeURIComponent(place) +
+            "&count=1&language=en&format=json";
+
+        const geoResponse = await fetch(geoURL);
+
+        if (!geoResponse.ok) {
+            throw new Error("Weather location search failed.");
+        }
+
+        const geoData = await geoResponse.json();
+
+        if (!geoData.results || !geoData.results.length) {
+            throw new Error("Location not found: " + place);
+        }
+
+        const city = geoData.results[0];
+
+        const weatherURL =
+            "https://api.open-meteo.com/v1/forecast?" +
+            "latitude=" + city.latitude +
+            "&longitude=" + city.longitude +
+            "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m" +
+            "&timezone=auto";
+
+        const weatherResponse = await fetch(weatherURL);
+
+        if (!weatherResponse.ok) {
+            throw new Error("Weather service unavailable.");
+        }
+
+        const data = await weatherResponse.json();
+
+        const current = data.current;
+
+        if (!current) {
+            throw new Error("Weather data unavailable.");
+        }
+
+        const conditions = {
+            0: "Clear sky",
+            1: "Mainly clear",
+            2: "Partly cloudy",
+            3: "Overcast",
+            45: "Fog",
+            48: "Depositing rime fog",
+            51: "Light drizzle",
+            53: "Moderate drizzle",
+            55: "Dense drizzle",
+            61: "Slight rain",
+            63: "Moderate rain",
+            65: "Heavy rain",
+            71: "Slight snowfall",
+            73: "Moderate snowfall",
+            75: "Heavy snowfall",
+            80: "Rain showers",
+            81: "Moderate rain showers",
+            82: "Heavy rain showers",
+            95: "Thunderstorm",
+            96: "Thunderstorm with hail",
+            99: "Severe thunderstorm with hail"
+        };
+
+        const condition =
+            conditions[current.weather_code] || "Unknown conditions";
+
+        return (
+            "LIVE WEATHER REPORT\n\n" +
+            "Location: " + city.name + "\n" +
+            "Temperature: " + current.temperature_2m + "°C\n" +
+            "Feels like: " + current.apparent_temperature + "°C\n" +
+            "Condition: " + condition + "\n" +
+            "Humidity: " + current.relative_humidity_2m + "%\n" +
+            "Wind speed: " + current.wind_speed_10m + " km/h\n" +
+            "Precipitation: " + current.precipitation + " mm\n\n" +
+            "Source: Open-Meteo"
+        );
+
+    } catch (error) {
+        throw new Error("Weather error: " + error.message);
+    }
+}
+
+// ===== 6. LOCAL COMMANDS =====
 
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
 
-    if (/\b(time|clock)\b/.test(t)) {
-        return "Current time: " +
-            new Date().toLocaleTimeString();
+    // Weather
+    if (/\b(weather|temperature|forecast)\b/.test(t)) {
+        const match = t.match(/\b(?:in|for|at)\s+(.+?)(?:\s+today|\s+now)?$/);
+
+        const location = match
+            ? match[1].trim()
+            : "Vijayawada";
+
+        return await getWeather(location);
     }
 
+    // Time
+    if (/\b(time|clock)\b/.test(t)) {
+        return "Current time: " +
+            new Date().toLocaleTimeString("en-IN");
+    }
+
+    // Date
     if (/\b(date|today)\b/.test(t)) {
         return "Today's date: " +
             new Date().toLocaleDateString("en-IN");
     }
 
+    // Day
     if (/\b(day|weekday)\b/.test(t)) {
         return "Today is " +
             new Date().toLocaleDateString("en-IN", {
@@ -111,6 +218,7 @@ async function handleTools(text) {
             });
     }
 
+    // Websites
     const websites = {
         "open google": "https://www.google.com",
         "open youtube": "https://www.youtube.com",
@@ -122,9 +230,10 @@ async function handleTools(text) {
 
     if (websites[t]) {
         window.open(websites[t], "_blank");
-        return "Opening " + t.replace("open ", "") + ".";
+        return "Opening " + t.replace("open ", "");
     }
 
+    // Google search
     if (t.startsWith("search for ")) {
         const q = t.slice(11).trim();
 
@@ -139,6 +248,7 @@ async function handleTools(text) {
         return "Searching Google for " + q;
     }
 
+    // YouTube search
     if (t.startsWith("play ")) {
         const q = t.slice(5).trim();
 
@@ -153,6 +263,7 @@ async function handleTools(text) {
         return "Searching YouTube for " + q;
     }
 
+    // Calculator
     if (t.startsWith("calculate ")) {
         const expression = t.slice(10).trim();
 
@@ -170,13 +281,14 @@ async function handleTools(text) {
                 : "Invalid calculation.";
 
         } catch {
-            return "Unable to calculate that.";
+            return "Unable to calculate.";
         }
     }
 
+    // Battery
     if (t.includes("battery")) {
         if (!navigator.getBattery) {
-            return "Battery information is unavailable.";
+            return "Battery information unavailable.";
         }
 
         try {
@@ -186,16 +298,18 @@ async function handleTools(text) {
                 Math.round(battery.level * 100) + "%";
 
         } catch {
-            return "Unable to read battery information.";
+            return "Unable to read battery.";
         }
     }
 
+    // Internet
     if (t.includes("internet") || t.includes("connection")) {
         return navigator.onLine
             ? "Internet connection is online."
             : "Internet connection is offline.";
     }
 
+    // Greetings
     if (/^(hello|hi|hey)\b/.test(t)) {
         return "Hello! JARVIS is online. How can I help you?";
     }
@@ -203,18 +317,13 @@ async function handleTools(text) {
     return null;
 }
 
-// ===== 6. GEMINI ERROR HANDLING =====
+// ===== 7. GEMINI ERROR HANDLING =====
 
 function getGeminiErrorMessage(code, data) {
     const message = data?.error?.message || "";
-    const combined = message.toLowerCase();
 
-    if (
-        code === 429 ||
-        combined.includes("quota") ||
-        combined.includes("rate limit")
-    ) {
-        return "Gemini usage quota exceeded. Please wait for your quota to reset or check your Google AI Studio usage.";
+    if (code === 429) {
+        return "Gemini quota exceeded. Please try again later or check your API usage.";
     }
 
     if (code === 400) {
@@ -222,24 +331,23 @@ function getGeminiErrorMessage(code, data) {
     }
 
     if (code === 401 || code === 403) {
-        return "API key invalid or Gemini API access denied. Check your API key.";
+        return "API key invalid or Gemini access denied.";
     }
 
     if (code === 404) {
-        return "Gemini model not found. Check the model name in the configuration.";
+        return "Gemini model not found. Check the model name.";
     }
 
     if (code >= 500) {
-        return "Google Gemini service is temporarily unavailable. Try again later.";
+        return "Google Gemini service is temporarily unavailable.";
     }
 
     return message || "Gemini API error: " + code;
 }
 
-// ===== 7. GEMINI CONNECTION =====
+// ===== 8. GEMINI CONNECTION =====
 
 async function askGemini(message, imageData = null) {
-
     if (!API_KEY) {
         const enteredKey = prompt("Enter your Gemini API key:");
 
@@ -252,18 +360,13 @@ async function askGemini(message, imageData = null) {
         localStorage.setItem("jarvis_key", API_KEY);
     }
 
-    const textMessage = message || "Describe this image.";
-
     const parts = [
-        { text: textMessage }
+        { text: message || "Describe this image." }
     ];
-
-    // IMPORTANT: Gemini REST API image format.
-    // Use inline_data and mime_type.
 
     if (imageData) {
         if (!imageData.mimeType || !imageData.data) {
-            throw new Error("Image type or image data is missing.");
+            throw new Error("Image type or data is missing.");
         }
 
         parts.push({
@@ -284,7 +387,7 @@ async function askGemini(message, imageData = null) {
         ...validHistory,
         {
             role: "user",
-            parts: parts
+            parts
         }
     ];
 
@@ -304,19 +407,20 @@ async function askGemini(message, imageData = null) {
             },
 
             body: JSON.stringify({
-                contents: contents,
+                contents,
 
-                system_instruction: {
+                systemInstruction: {
                     parts: [{
                         text:
                             "You are JARVIS, a helpful personal AI assistant. " +
-                            "Answer clearly, accurately and concisely."
+                            "Answer accurately, clearly and concisely. " +
+                            "You can help with education, technology and daily tasks."
                     }]
                 },
 
-                generation_config: {
+                generationConfig: {
                     temperature: 0.7,
-                    max_output_tokens: 1024
+                    maxOutputTokens: 1024
                 }
             }),
 
@@ -343,21 +447,18 @@ async function askGemini(message, imageData = null) {
             .trim();
 
         if (!answer) {
-            const reason = data.promptFeedback?.blockReason;
-
             throw new Error(
-                reason
-                    ? "Gemini could not answer: " + reason
+                data.promptFeedback?.blockReason
+                    ? "Response blocked: " +
+                      data.promptFeedback.blockReason
                     : "Gemini returned an empty response."
             );
         }
 
-        // Save text only, never save image data.
-
         chatHistory.push(
             {
                 role: "user",
-                parts: [{ text: textMessage }]
+                parts: [{ text: message || "Describe this image." }]
             },
             {
                 role: "model",
@@ -373,7 +474,7 @@ async function askGemini(message, imageData = null) {
                 JSON.stringify(chatHistory)
             );
         } catch (error) {
-            console.warn("Could not save history:", error);
+            console.warn("History save failed:", error);
         }
 
         return answer;
@@ -390,7 +491,7 @@ async function askGemini(message, imageData = null) {
     }
 }
 
-// ===== 8. MAIN MESSAGE PROCESSOR =====
+// ===== 9. MAIN MESSAGE PROCESSOR =====
 
 async function sendMessage(imageData = null) {
     if (!input || busy) return;
@@ -401,6 +502,7 @@ async function sendMessage(imageData = null) {
 
     if (!navigator.onLine) {
         addMessage("No internet connection.", "ai");
+        setStatus("NO INTERNET CONNECTION");
         return;
     }
 
@@ -417,22 +519,20 @@ async function sendMessage(imageData = null) {
     setStatus("PROCESSING...");
 
     try {
+        let answer;
+
         const toolResult = imageData
             ? null
             : await handleTools(message);
 
-        let answer;
-
         if (toolResult !== null) {
             answer = toolResult;
         } else {
-            answer = await askGemini(
-                message || "Describe this image.",
-                imageData
-            );
+            answer = await askGemini(message, imageData);
         }
 
         addMessage(answer, "ai");
+
         speak(answer);
 
         setStatus("SYSTEM READY");
@@ -455,6 +555,7 @@ async function sendMessage(imageData = null) {
         busy = false;
 
         if (sendBtn) sendBtn.disabled = false;
+
         if (input) input.focus();
 
         if (wakeWordEnabled && !wakeCommandPending) {
@@ -463,12 +564,10 @@ async function sendMessage(imageData = null) {
     }
 }
 
-// ===== 9. SEND BUTTON =====
+// ===== 10. SEND BUTTON =====
 
 if (sendBtn) {
-    sendBtn.addEventListener("click", () => {
-        sendMessage();
-    });
+    sendBtn.addEventListener("click", () => sendMessage());
 }
 
 if (input) {
@@ -480,7 +579,7 @@ if (input) {
     });
 }
 
-// ===== 10. MICROPHONE =====
+// ===== 11. MICROPHONE =====
 
 const SpeechRecognition =
     window.SpeechRecognition ||
@@ -488,10 +587,7 @@ const SpeechRecognition =
 
 function startManualMicrophone() {
     if (!SpeechRecognition) {
-        addMessage(
-            "Voice recognition is not supported in this browser.",
-            "ai"
-        );
+        addMessage("Voice recognition is not supported.", "ai");
         return;
     }
 
@@ -503,9 +599,7 @@ function startManualMicrophone() {
     recognition.interimResults = false;
     recognition.lang = "en-IN";
 
-    recognition.onstart = () => {
-        setStatus("LISTENING...");
-    };
+    recognition.onstart = () => setStatus("LISTENING...");
 
     recognition.onresult = event => {
         const transcript =
@@ -540,17 +634,21 @@ if (micBtn) {
     micBtn.addEventListener("click", startManualMicrophone);
 }
 
-// ===== 11. WAKE WORD =====
+// ===== 12. WAKE WORD =====
 
 function startWakeWordListening() {
-    if (!SpeechRecognition || !wakeWordEnabled || busy ||
-        wakeCommandPending) return;
+    if (
+        !SpeechRecognition ||
+        !wakeWordEnabled ||
+        busy ||
+        wakeCommandPending
+    ) return;
 
     if (wakeRecognizer) {
         try {
             wakeRecognizer.onend = null;
             wakeRecognizer.stop();
-        } catch (error) {}
+        } catch {}
     }
 
     wakeRecognizer = new SpeechRecognition();
@@ -577,15 +675,14 @@ function startWakeWordListening() {
             wakeCommandPending = true;
 
             updateWakeStatus("JARVIS ACTIVATED", "#00ff00");
+
             setStatus("JARVIS ACTIVATED");
 
             wakeRecognizer.stop();
 
             speak("Yes?");
 
-            setTimeout(() => {
-                listenForWakeCommand();
-            }, 1000);
+            setTimeout(listenForWakeCommand, 1000);
         }
     };
 
@@ -674,14 +771,14 @@ function stopWakeWordListening() {
         try {
             wakeRecognizer.onend = null;
             wakeRecognizer.stop();
-        } catch (error) {}
+        } catch {}
     }
 
     if (commandRecognizer) {
         try {
             commandRecognizer.onend = null;
             commandRecognizer.stop();
-        } catch (error) {}
+        } catch {}
     }
 
     wakeRecognizer = null;
@@ -691,10 +788,7 @@ function stopWakeWordListening() {
 
 function toggleWakeWord() {
     if (!SpeechRecognition) {
-        addMessage(
-            "Wake word is not supported in this browser.",
-            "ai"
-        );
+        addMessage("Wake word is not supported.", "ai");
         return;
     }
 
@@ -722,7 +816,7 @@ if (wakeBtn) {
     wakeBtn.addEventListener("click", toggleWakeWord);
 }
 
-// ===== 12. IMAGE READER =====
+// ===== 13. IMAGE READER =====
 
 function readImage(file) {
     return new Promise((resolve, reject) => {
@@ -739,8 +833,8 @@ function readImage(file) {
                 return;
             }
 
-            const mimeType = result
-                .slice(5, result.indexOf(";"));
+            const mimeType =
+                result.slice(5, result.indexOf(";"));
 
             const data = result.split(",")[1];
 
@@ -749,10 +843,7 @@ function readImage(file) {
                 return;
             }
 
-            resolve({
-                mimeType,
-                data
-            });
+            resolve({ mimeType, data });
         };
 
         reader.onerror = () => {
@@ -762,8 +853,7 @@ function readImage(file) {
         reader.readAsDataURL(file);
     });
 }
-
-// ===== 13. CAMERA AND IMAGE UPLOAD =====
+// ===== 14. CAMERA AND IMAGE UPLOAD =====
 
 if (camBtn && imageInput) {
     camBtn.addEventListener("click", () => {
@@ -782,21 +872,13 @@ if (camBtn && imageInput) {
         ];
 
         if (!allowedTypes.includes(file.type)) {
-            addMessage(
-                "Please choose a JPG, PNG or WEBP image.",
-                "ai"
-            );
-
+            addMessage("Choose a JPG, PNG or WEBP image.", "ai");
             imageInput.value = "";
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            addMessage(
-                "Please choose an image under 5 MB.",
-                "ai"
-            );
-
+            addMessage("Choose an image under 5 MB.", "ai");
             imageInput.value = "";
             return;
         }
@@ -809,13 +891,7 @@ if (camBtn && imageInput) {
             await sendMessage(imageData);
 
         } catch (error) {
-            console.error(error);
-
-            addMessage(
-                "Image error: " + error.message,
-                "ai"
-            );
-
+            addMessage("Image error: " + error.message, "ai");
             setStatus("SYSTEM READY");
 
         } finally {
@@ -823,8 +899,7 @@ if (camBtn && imageInput) {
         }
     });
 }
-
-// ===== 14. CLEAR MEMORY =====
+// ===== 15. CLEAR MEMORY =====
 
 if (clearBtn) {
     clearBtn.addEventListener("click", () => {
@@ -840,13 +915,46 @@ if (clearBtn) {
             window.speechSynthesis.cancel();
         }
 
-        addMessage(
-            "Memory cleared. JARVIS is ready!",
-            "ai"
-        );
+        addMessage("Memory cleared. JARVIS is ready!", "ai");
 
         setStatus("SYSTEM READY");
     });
 }
 
-// ===== 15. INTERNET S
+// ===== 16. INTERNET STATUS =====
+
+window.addEventListener("online", () => {
+    setStatus("SYSTEM READY");
+});
+
+window.addEventListener("offline", () => {
+    setStatus("NO INTERNET CONNECTION");
+});
+
+// ===== 17. STARTUP =====
+
+const requiredElements = {
+    input,
+    sendBtn,
+    micBtn,
+    camBtn,
+    clearBtn,
+    imageInput,
+    chat,
+    status
+};
+
+for (const [name, element] of Object.entries(requiredElements)) {
+    if (!element) {
+        console.error("JARVIS: Missing HTML element:", name);
+    }
+}
+
+setStatus("SYSTEM READY");
+
+addMessage(
+    "Systems online. J.A.R.V.I.S. is ready!",
+    "ai"
+);
+
+console.log("J.A.R.V.I.S initialized successfully.");
