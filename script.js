@@ -19,10 +19,7 @@ if (!API_KEY) {
 
 // ===== 2. MODEL LIST =====
 
-const MODELS = [
-    "gemini-2.5-flash",
-    "gemini-flash-latest"
-];
+const MODELS = ["gemini-2.5-flash"];
 
 // ===== 3. HTML ELEMENTS =====
 
