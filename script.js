@@ -1,8 +1,7 @@
-
 /* ==========================================
    J.A.R.V.I.S. PERSONAL AI ASSISTANT
    Gemini AI + Voice + Text Chat
-   ========================================== */
+========================================== */
 
 // ===== 1. API KEY =====
 
@@ -20,9 +19,9 @@ if (!API_KEY) {
 // ===== 2. MODEL LIST =====
 
 const MODELS = [
-  "gemini-3.8-flash",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite"
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash-lite"
 ];
 
 // ===== 3. HTML ELEMENTS =====
@@ -55,6 +54,7 @@ function add(message, type) {
 // ===== 5. GEMINI AI ENGINE =====
 
 async function callGemini(promptText) {
+
     if (!API_KEY) {
         throw new Error("Gemini API key is missing.");
     }
@@ -62,21 +62,38 @@ async function callGemini(promptText) {
     let lastError = null;
 
     for (const model of MODELS) {
+
+        const controller = new AbortController();
+
+        const timeout = setTimeout(() => {
+            controller.abort();
+        }, 20000);
+
         try {
+
+            console.log("Trying Gemini model:", model);
+
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(API_KEY)}`,
                 {
                     method: "POST",
+
                     headers: {
                         "Content-Type": "application/json"
                     },
+
+                    signal: controller.signal,
+
                     body: JSON.stringify({
                         contents: [{
                             role: "user",
-                            parts: [{ text: promptText }]
+                            parts: [{
+                                text: promptText
+                            }]
                         }],
+
                         generationConfig: {
-                            maxOutputTokens: 256,
+                            maxOutputTokens: 512,
                             temperature: 0.7
                         }
                     })
@@ -85,13 +102,22 @@ async function callGemini(promptText) {
 
             const data = await response.json();
 
+            // API error handling
+
             if (!response.ok) {
+
                 const errorMessage =
                     data?.error?.message ||
                     `HTTP ${response.status}`;
 
-                // Authentication or request errors:
-                // no point switching models
+                console.error(
+                    model + " API error:",
+                    errorMessage
+                );
+
+                // Key or request error:
+                // stop trying other models
+
                 if (
                     response.status === 400 ||
                     response.status === 401 ||
@@ -100,46 +126,65 @@ async function callGemini(promptText) {
                     throw new Error(errorMessage);
                 }
 
-                // Try the next model on temporary,
-                // unavailable, quota or model errors
+                // Other errors: try backup model
+
                 lastError = new Error(
                     `${model}: ${errorMessage}`
                 );
 
-                console.warn(
-                    `${model} failed. Trying backup model...`,
-                    errorMessage
-                );
-
                 continue;
             }
 
-            const reply = data.candidates?.[0]?.content?.parts
-                ?.map(part => part.text || "")
-                .join("")
-                .trim();
+            // Extract response text
+
+            const reply =
+                data.candidates?.[0]?.content?.parts
+                    ?.map(part => part.text || "")
+                    .join("")
+                    .trim();
 
             if (!reply) {
+
                 lastError = new Error(
-                    `${model} returned an empty response.`
+                    model + " returned an empty response."
                 );
+
+                console.warn(lastError.message);
+
                 continue;
             }
 
-            console.log("JARVIS connected using:", model);
+            console.log(
+                "JARVIS connected successfully using:",
+                model
+            );
 
             return reply;
 
         } catch (error) {
+
             lastError = error;
 
-            console.error(
-                `${model} failed:`,
-                error.message
-            );
+            if (error.name === "AbortError") {
 
-            // Stop if this is an API key or
-            // invalid request problem
+                console.warn(
+                    model + " timed out after 20 seconds."
+                );
+
+                lastError = new Error(
+                    model + " timed out."
+                );
+
+            } else {
+
+                console.error(
+                    model + " failed:",
+                    error.message
+                );
+            }
+
+            // Stop for key or request problems
+
             if (
                 error.message.includes("API key") ||
                 error.message.includes("API_KEY") ||
@@ -150,16 +195,20 @@ async function callGemini(promptText) {
                 throw error;
             }
 
-            // Otherwise move to the next backup model
-            continue;
+            // Otherwise try the next model
+
+        } finally {
+
+            clearTimeout(timeout);
         }
     }
 
     throw new Error(
-        "All Gemini models failed. Please try again later. " +
+        "All Gemini models failed. Please try again. " +
         (lastError?.message || "")
     );
 }
+
 // ===== 6. ASK JARVIS =====
 
 async function askGemini(promptText) {
@@ -173,7 +222,8 @@ async function askGemini(promptText) {
 
         const reply = await callGemini(promptText);
 
-        message.innerText = "J.A.R.V.I.S: " + reply;
+        message.innerText =
+            "J.A.R.V.I.S: " + reply;
 
         chat.scrollTop = chat.scrollHeight;
 
@@ -182,9 +232,10 @@ async function askGemini(promptText) {
     } catch (error) {
 
         message.innerText =
-            "J.A.R.V.I.S: ERROR - " + error.message;
+            "J.A.R.V.I.S: ERROR - " +
+            error.message;
 
-        console.error(error);
+        console.error("JARVIS error:", error);
     }
 }
 
@@ -208,7 +259,9 @@ sendBtn.onclick = () => {
 input.addEventListener("keydown", (event) => {
 
     if (event.key === "Enter") {
+
         event.preventDefault();
+
         sendBtn.click();
     }
 
@@ -244,7 +297,10 @@ if (SR) {
 
     rec.onerror = (event) => {
 
-        console.error("Microphone error:", event.error);
+        console.error(
+            "Microphone error:",
+            event.error
+        );
 
         micBtn.innerText = "🎙️";
     };
@@ -264,14 +320,20 @@ if (SR) {
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Microphone start error:",
+                error
+            );
         }
     };
 
 } else {
 
     micBtn.onclick = () => {
-        alert("Speech recognition is not supported in this browser.");
+
+        alert(
+            "Speech recognition is not supported in this browser."
+        );
     };
 }
 
@@ -281,7 +343,10 @@ let voices = [];
 
 function loadVoices() {
 
-    voices = speechSynthesis.getVoices();
+    if ("speechSynthesis" in window) {
+
+        voices = speechSynthesis.getVoices();
+    }
 }
 
 if ("speechSynthesis" in window) {
@@ -297,7 +362,8 @@ function speak(text) {
 
     speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance =
+        new SpeechSynthesisUtterance(text);
 
     utterance.rate = 1.05;
     utterance.pitch = 0.85;
@@ -307,6 +373,7 @@ function speak(text) {
     );
 
     if (voice) {
+
         utterance.voice = voice;
     }
 
@@ -318,15 +385,23 @@ function speak(text) {
 console.log("J.A.R.V.I.S. SYSTEM ONLINE");
 
 if (navigator.onLine) {
+
     console.log("Internet connection available.");
+
 } else {
+
     console.log("No internet connection.");
 }
 
 window.addEventListener("online", () => {
+
     console.log("Internet connected.");
 });
-
 window.addEventListener("offline", () => {
+
+    console.log("Internet disconnected.");
+});
+window.addEventListener("offline", () => {
+
     console.log("Internet disconnected.");
 });
