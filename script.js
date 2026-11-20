@@ -24,10 +24,10 @@ if (API_KEY) {
 // ===== 2. GEMINI MODELS =====
 
 const MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite"
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash"
 ];
+const REQUEST_TIMEOUT = 20000;
 
 // ===== 3. MEMORY SYSTEM =====
 
@@ -98,8 +98,12 @@ async function callGemini(promptText) {
                         "x-goog-api-key": API_KEY
                     },
                     body: JSON.stringify({
-                        contents: contents
-                    })
+    contents: contents,
+    generationConfig: {
+        maxOutputTokens: 400,
+        temperature: 0.5
+    }
+})
                 }
             );
 
