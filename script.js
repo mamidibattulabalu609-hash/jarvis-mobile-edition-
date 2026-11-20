@@ -1,13 +1,10 @@
-
 /* =========================================
-   J.A.R.V.I.S AI ASSISTANT
-   Gemini + Voice + Camera + Memory
-   Corrected Complete Version
+   J.A.R.V.I.S PERSONAL AI ASSISTANT
+   Gemini + Voice + Wake Word + Camera + Memory
 ========================================= */
 
 // ===== 1. CONFIGURATION =====
 
-// Change this if your Gemini API key uses a different model.
 const MODEL = "gemini-3.8-flash";
 
 const API_URL =
@@ -28,6 +25,12 @@ try {
 }
 
 let busy = false;
+let wakeWordEnabled = false;
+let wakeRecognizer = null;
+let commandRecognizer = null;
+let wakeCommandPending = false;
+
+const WAKE_WORD = "hey jarvis";
 
 // ===== 2. HTML ELEMENTS =====
 
@@ -42,17 +45,17 @@ const status = document.getElementById("system-status");
 const wakeBtn = document.getElementById("wake-btn");
 const wakeStatus = document.getElementById("wake-status");
 
-// ===== 3. DISPLAY MESSAGES =====
+// ===== 3. DISPLAY =====
 
 function addMessage(message, type = "ai") {
     if (!chat) return;
 
     const div = document.createElement("div");
-
     div.className = "msg " + type;
 
     div.textContent =
-        (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + message;
+        (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") +
+        String(message);
 
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -60,6 +63,16 @@ function addMessage(message, type = "ai") {
 
 function setStatus(message) {
     if (status) status.textContent = message;
+}
+
+function updateWakeStatus(message, color) {
+    if (!wakeStatus) return;
+
+    wakeStatus.textContent = message;
+
+    if (color) {
+        wakeStatus.style.color = color;
+    }
 }
 
 // ===== 4. VOICE OUTPUT =====
@@ -70,31 +83,27 @@ function speak(text) {
     window.speechSynthesis.cancel();
 
     const speech = new SpeechSynthesisUtterance(text);
-
     speech.lang = "en-IN";
     speech.rate = 1;
 
     window.speechSynthesis.speak(speech);
 }
 
-// ===== 5. LOCAL TOOLS =====
+// ===== 5. LOCAL COMMANDS =====
 
 async function handleTools(text) {
     const t = text.toLowerCase().trim();
 
-    // 1. Time
     if (/\b(time|clock)\b/.test(t)) {
         return "Current time: " +
             new Date().toLocaleTimeString();
     }
 
-    // 2. Date
     if (/\b(date|today)\b/.test(t)) {
         return "Today's date: " +
-            new Date().toLocaleDateString();
+            new Date().toLocaleDateString("en-IN");
     }
 
-    // 3. Day
     if (/\b(day|weekday)\b/.test(t)) {
         return "Today is " +
             new Date().toLocaleDateString("en-IN", {
@@ -102,43 +111,20 @@ async function handleTools(text) {
             });
     }
 
-    // 4. Google
-    if (t === "open google") {
-        window.open("https://www.google.com", "_blank");
-        return "Opening Google.";
+    const websites = {
+        "open google": "https://www.google.com",
+        "open youtube": "https://www.youtube.com",
+        "open gmail": "https://mail.google.com",
+        "open facebook": "https://www.facebook.com",
+        "open instagram": "https://www.instagram.com",
+        "open whatsapp": "https://web.whatsapp.com"
+    };
+
+    if (websites[t]) {
+        window.open(websites[t], "_blank");
+        return "Opening " + t.replace("open ", "") + ".";
     }
 
-    // 5. YouTube
-    if (t === "open youtube") {
-        window.open("https://www.youtube.com", "_blank");
-        return "Opening YouTube.";
-    }
-
-    // 6. Gmail
-    if (t === "open gmail") {
-        window.open("https://mail.google.com", "_blank");
-        return "Opening Gmail.";
-    }
-
-    // 7. Facebook
-    if (t === "open facebook") {
-        window.open("https://www.facebook.com", "_blank");
-        return "Opening Facebook.";
-    }
-
-    // 8. Instagram
-    if (t === "open instagram") {
-        window.open("https://www.instagram.com", "_blank");
-        return "Opening Instagram.";
-    }
-
-    // 9. WhatsApp
-    if (t === "open whatsapp") {
-        window.open("https://web.whatsapp.com", "_blank");
-        return "Opening WhatsApp.";
-    }
-
-    // 10. Google Search
     if (t.startsWith("search for ")) {
         const q = t.slice(11).trim();
 
@@ -153,7 +139,6 @@ async function handleTools(text) {
         return "Searching Google for " + q;
     }
 
-    // 11. YouTube Search
     if (t.startsWith("play ")) {
         const q = t.slice(5).trim();
 
@@ -168,7 +153,6 @@ async function handleTools(text) {
         return "Searching YouTube for " + q;
     }
 
-    // 12. Calculator
     if (t.startsWith("calculate ")) {
         const expression = t.slice(10).trim();
 
@@ -190,7 +174,6 @@ async function handleTools(text) {
         }
     }
 
-    // 13. Battery
     if (t.includes("battery")) {
         if (!navigator.getBattery) {
             return "Battery information is unavailable.";
@@ -207,14 +190,12 @@ async function handleTools(text) {
         }
     }
 
-    // 14. Internet
     if (t.includes("internet") || t.includes("connection")) {
         return navigator.onLine
             ? "Internet connection is online."
             : "Internet connection is offline.";
     }
 
-    // 15. Greeting
     if (/^(hello|hi|hey)\b/.test(t)) {
         return "Hello! JARVIS is online. How can I help you?";
     }
@@ -222,9 +203,43 @@ async function handleTools(text) {
     return null;
 }
 
-// ===== 6. GEMINI AI CONNECTION =====
+// ===== 6. GEMINI ERROR HANDLING =====
+
+function getGeminiErrorMessage(code, data) {
+    const message = data?.error?.message || "";
+    const combined = message.toLowerCase();
+
+    if (
+        code === 429 ||
+        combined.includes("quota") ||
+        combined.includes("rate limit")
+    ) {
+        return "Gemini usage quota exceeded. Please wait for your quota to reset or check your Google AI Studio usage.";
+    }
+
+    if (code === 400) {
+        return "Gemini rejected the request. Check the message or image format.";
+    }
+
+    if (code === 401 || code === 403) {
+        return "API key invalid or Gemini API access denied. Check your API key.";
+    }
+
+    if (code === 404) {
+        return "Gemini model not found. Check the model name in the configuration.";
+    }
+
+    if (code >= 500) {
+        return "Google Gemini service is temporarily unavailable. Try again later.";
+    }
+
+    return message || "Gemini API error: " + code;
+}
+
+// ===== 7. GEMINI CONNECTION =====
 
 async function askGemini(message, imageData = null) {
+
     if (!API_KEY) {
         const enteredKey = prompt("Enter your Gemini API key:");
 
@@ -237,28 +252,36 @@ async function askGemini(message, imageData = null) {
         localStorage.setItem("jarvis_key", API_KEY);
     }
 
+    const textMessage = message || "Describe this image.";
+
     const parts = [
-        {
-            text: message || "Describe this image."
-        }
+        { text: textMessage }
     ];
 
-    // Add image safely
+    // IMPORTANT: Gemini REST API image format.
+    // Use inline_data and mime_type.
+
     if (imageData) {
         if (!imageData.mimeType || !imageData.data) {
             throw new Error("Image type or image data is missing.");
         }
 
         parts.push({
-            inlineData: {
-                mimeType: imageData.mimeType,
+            inline_data: {
+                mime_type: imageData.mimeType,
                 data: imageData.data
             }
         });
     }
 
+    const validHistory = chatHistory.filter(item =>
+        item &&
+        (item.role === "user" || item.role === "model") &&
+        Array.isArray(item.parts)
+    );
+
     const contents = [
-        ...chatHistory,
+        ...validHistory,
         {
             role: "user",
             parts: parts
@@ -283,7 +306,7 @@ async function askGemini(message, imageData = null) {
             body: JSON.stringify({
                 contents: contents,
 
-                systemInstruction: {
+                system_instruction: {
                     parts: [{
                         text:
                             "You are JARVIS, a helpful personal AI assistant. " +
@@ -291,21 +314,26 @@ async function askGemini(message, imageData = null) {
                     }]
                 },
 
-                generationConfig: {
+                generation_config: {
                     temperature: 0.7,
-                    maxOutputTokens: 1024
+                    max_output_tokens: 1024
                 }
             }),
 
             signal: controller.signal
         });
 
-        const data = await response.json();
+        let data;
+
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error("Gemini returned an unreadable response.");
+        }
 
         if (!response.ok) {
             throw new Error(
-                data.error?.message ||
-                "Gemini API error: " + response.status
+                getGeminiErrorMessage(response.status, data)
             );
         }
 
@@ -315,30 +343,38 @@ async function askGemini(message, imageData = null) {
             .trim();
 
         if (!answer) {
-            throw new Error("Gemini returned an empty response.");
+            const reason = data.promptFeedback?.blockReason;
+
+            throw new Error(
+                reason
+                    ? "Gemini could not answer: " + reason
+                    : "Gemini returned an empty response."
+            );
         }
 
-        // Save text only, not image data
-        chatHistory.push({
-            role: "user",
-            parts: [{
-                text: message || "Describe this image."
-            }]
-        });
+        // Save text only, never save image data.
 
-        chatHistory.push({
-            role: "model",
-            parts: [{
-                text: answer
-            }]
-        });
+        chatHistory.push(
+            {
+                role: "user",
+                parts: [{ text: textMessage }]
+            },
+            {
+                role: "model",
+                parts: [{ text: answer }]
+            }
+        );
 
         chatHistory = chatHistory.slice(-12);
 
-        localStorage.setItem(
-            "jarvis_history",
-            JSON.stringify(chatHistory)
-        );
+        try {
+            localStorage.setItem(
+                "jarvis_history",
+                JSON.stringify(chatHistory)
+            );
+        } catch (error) {
+            console.warn("Could not save history:", error);
+        }
 
         return answer;
 
@@ -354,7 +390,7 @@ async function askGemini(message, imageData = null) {
     }
 }
 
-// ===== 7. MAIN MESSAGE PROCESSOR =====
+// ===== 8. MAIN MESSAGE PROCESSOR =====
 
 async function sendMessage(imageData = null) {
     if (!input || busy) return;
@@ -404,20 +440,30 @@ async function sendMessage(imageData = null) {
     } catch (error) {
         console.error("JARVIS ERROR:", error);
 
-        addMessage("Error: " + error.message, "ai");
+        addMessage(
+            "Error: " + (error.message || "Unknown error."),
+            "ai"
+        );
 
-        setStatus("CONNECTION ERROR");
+        setStatus(
+            /quota|usage limit|rate limit/i.test(error.message || "")
+                ? "QUOTA LIMIT"
+                : "CONNECTION ERROR"
+        );
 
     } finally {
         busy = false;
 
         if (sendBtn) sendBtn.disabled = false;
-
         if (input) input.focus();
+
+        if (wakeWordEnabled && !wakeCommandPending) {
+            setTimeout(startWakeWordListening, 800);
+        }
     }
 }
 
-// ===== 8. SEND BUTTON =====
+// ===== 9. SEND BUTTON =====
 
 if (sendBtn) {
     sendBtn.addEventListener("click", () => {
@@ -434,7 +480,7 @@ if (input) {
     });
 }
 
-// ===== 9. MICROPHONE =====
+// ===== 10. MICROPHONE =====
 
 const SpeechRecognition =
     window.SpeechRecognition ||
@@ -494,29 +540,15 @@ if (micBtn) {
     micBtn.addEventListener("click", startManualMicrophone);
 }
 
-// ===== 10. WAKE WORD =====
-
-let wakeWordEnabled = false;
-let wakeRecognizer = null;
-let commandRecognizer = null;
-
-const WAKE_WORD = "hey jarvis";
-
-function updateWakeStatus(message, color = "") {
-    if (wakeStatus) {
-        wakeStatus.textContent = message;
-
-        if (color) {
-            wakeStatus.style.color = color;
-        }
-    }
-}
+// ===== 11. WAKE WORD =====
 
 function startWakeWordListening() {
-    if (!SpeechRecognition || !wakeWordEnabled || busy) return;
+    if (!SpeechRecognition || !wakeWordEnabled || busy ||
+        wakeCommandPending) return;
 
     if (wakeRecognizer) {
         try {
+            wakeRecognizer.onend = null;
             wakeRecognizer.stop();
         } catch (error) {}
     }
@@ -542,8 +574,9 @@ function startWakeWordListening() {
         transcript = transcript.toLowerCase().trim();
 
         if (transcript.includes(WAKE_WORD)) {
-            updateWakeStatus("JARVIS ACTIVATED", "#00ff00");
+            wakeCommandPending = true;
 
+            updateWakeStatus("JARVIS ACTIVATED", "#00ff00");
             setStatus("JARVIS ACTIVATED");
 
             wakeRecognizer.stop();
@@ -575,8 +608,12 @@ function startWakeWordListening() {
     };
 
     wakeRecognizer.onend = () => {
-        if (wakeWordEnabled && !busy) {
-            setTimeout(startWakeWordListening, 700);
+        if (
+            wakeWordEnabled &&
+            !busy &&
+            !wakeCommandPending
+        ) {
+            setTimeout(startWakeWordListening, 1000);
         }
     };
 
@@ -589,7 +626,10 @@ function startWakeWordListening() {
 }
 
 function listenForWakeCommand() {
-    if (!SpeechRecognition || !wakeWordEnabled || busy) return;
+    if (!SpeechRecognition || !wakeWordEnabled || busy) {
+        wakeCommandPending = false;
+        return;
+    }
 
     commandRecognizer = new SpeechRecognition();
 
@@ -612,8 +652,10 @@ function listenForWakeCommand() {
     };
 
     commandRecognizer.onend = () => {
+        wakeCommandPending = false;
+
         if (wakeWordEnabled && !busy) {
-            setTimeout(startWakeWordListening, 800);
+            setTimeout(startWakeWordListening, 1000);
         }
     };
 
@@ -622,6 +664,7 @@ function listenForWakeCommand() {
         setStatus("LISTENING FOR COMMAND...");
     } catch (error) {
         console.error(error);
+        wakeCommandPending = false;
         startWakeWordListening();
     }
 }
@@ -636,12 +679,14 @@ function stopWakeWordListening() {
 
     if (commandRecognizer) {
         try {
+            commandRecognizer.onend = null;
             commandRecognizer.stop();
         } catch (error) {}
     }
 
     wakeRecognizer = null;
     commandRecognizer = null;
+    wakeCommandPending = false;
 }
 
 function toggleWakeWord() {
@@ -677,7 +722,7 @@ if (wakeBtn) {
     wakeBtn.addEventListener("click", toggleWakeWord);
 }
 
-// ===== 11. IMAGE READER =====
+// ===== 12. IMAGE READER =====
 
 function readImage(file) {
     return new Promise((resolve, reject) => {
@@ -718,7 +763,7 @@ function readImage(file) {
     });
 }
 
-// ===== 12. CAMERA AND IMAGE UPLOAD =====
+// ===== 13. CAMERA AND IMAGE UPLOAD =====
 
 if (camBtn && imageInput) {
     camBtn.addEventListener("click", () => {
@@ -779,7 +824,7 @@ if (camBtn && imageInput) {
     });
 }
 
-// ===== 13. CLEAR MEMORY =====
+// ===== 14. CLEAR MEMORY =====
 
 if (clearBtn) {
     clearBtn.addEventListener("click", () => {
@@ -804,43 +849,4 @@ if (clearBtn) {
     });
 }
 
-// ===== 14. INTERNET STATUS =====
-
-window.addEventListener("online", () => {
-    setStatus("SYSTEM READY");
-});
-
-window.addEventListener("offline", () => {
-    setStatus("NO INTERNET CONNECTION");
-});
-
-// ===== 15. STARTUP =====
-
-const requiredElements = {
-    input,
-    sendBtn,
-    micBtn,
-    camBtn,
-    clearBtn,
-    imageInput,
-    chat,
-    status
-};
-
-for (const [name, element] of Object.entries(requiredElements)) {
-    if (!element) {
-        console.error(
-            "JARVIS: Missing HTML element:",
-            name
-        );
-    }
-}
-
-setStatus("SYSTEM READY");
-
-addMessage(
-    "Systems online. JARVIS is ready!",
-    "ai"
-);
-
-console.log("J.A.R.V.I.S initialized successfully.");
+// ===== 15. INTERNET S
