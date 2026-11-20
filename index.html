@@ -1,166 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0b101a">
-  <title>J.A.R.V.I.S. — Personal Intelligent System</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b101a">
+
+    <title>J.A.R.V.I.S - Mobile Edition</title>
+
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="identity">
-        <div class="logo-mark">✧</div>
-        <div>
-          <div class="logo-title">J.A.R.V.I.S.</div>
-          <div class="logo-subtitle">Just A Rather Very Intelligent System</div>
-        </div>
-      </div>
-      <div class="header-actions">
-        <button class="header-icon" id="sound-toggle" type="button" aria-label="Sound">◖))</button>
-        <button class="header-icon" id="settings-toggle" type="button" aria-label="Settings">⚙</button>
-        <button class="header-icon" id="power-toggle" type="button" aria-label="Power">⏻</button>
-      </div>
+
+    <!-- HEADER -->
+    <header>
+        <h1>J.A.R.V.I.S</h1>
+        <p>MOBILE EDITION</p>
     </header>
 
-    <main class="dashboard">
-      <aside class="left-column">
-        <section class="voice-card panel">
-          <div class="orb-area">
-            <div class="orb orbit-a"></div>
-            <div class="orb orbit-b"></div>
-            <div class="orb orbit-c"></div>
-            <div class="orb-core"></div>
-            <i class="orb-dot dot-a"></i><i class="orb-dot dot-b"></i>
-          </div>
-          <div class="voice-wave" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-          </div>
-          <button id="mic-btn" class="voice-button" type="button">
-            <span class="mic-symbol">♩</span> Start Voice Command
-          </button>
-          <div class="voice-caption" id="voice-caption">VOICE INTERFACE READY</div>
-        </section>
+    <!-- AI CORE -->
+    <main>
 
-        <section class="monitor-section">
-          <h2 class="section-title">System Monitoring</h2>
-          <div class="monitor-grid">
-            <div class="monitor-card">
-              <span class="monitor-icon cyan">▦</span>
-              <div><small>AI Engine</small><strong id="engine-monitor">Gemini</strong></div>
+        <section class="core-section">
+
+            <div class="core">
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="center"></div>
             </div>
-            <div class="monitor-card">
-              <span class="monitor-icon violet">▱</span>
-              <div><small>Model</small><strong>3.6 Flash</strong></div>
+
+            <p class="core-text">CORE ACTIVE</p>
+
+        </section>
+
+        <!-- SYSTEM STATUS -->
+        <section class="status">
+
+            <h2>SYSTEM STATUS</h2>
+
+            <div class="row">
+                <span>AI CORE</span>
+                <b class="on">● ONLINE</b>
             </div>
-            <div class="monitor-card">
-              <span class="monitor-icon purple">ϟ</span>
-              <div><small>Network</small><strong id="network-monitor">Online</strong></div>
+
+            <div class="row">
+                <span>NETWORK</span>
+                <b class="on">● ONLINE</b>
             </div>
-            <div class="monitor-card">
-              <span class="monitor-icon aqua">∿</span>
-              <div><small>Status</small><strong id="system-status">Ready</strong></div>
+
+            <div class="row">
+                <span>VOICE</span>
+                <b class="off">○ LOCKED</b>
             </div>
-          </div>
-        </section>
-      </aside>
 
-      <section class="right-column">
-        <section class="quick-section">
-          <h2 class="section-title">Quick Commands</h2>
-          <div class="quick-grid">
-            <button class="quick-card" id="quick-weather" type="button">
-              <span class="quick-icon">☁</span>
-              <span><strong>Weather Report</strong><small>Get current weather conditions</small></span>
-            </button>
-            <button class="quick-card" id="quick-time" type="button">
-              <span class="quick-icon">◷</span>
-              <span><strong>Current Time</strong><small>Check the time</small></span>
-            </button>
-            <button class="quick-card" id="quick-search" type="button">
-              <span class="quick-icon">⌕</span>
-              <span><strong>Web Search</strong><small>Ask J.A.R.V.I.S. to research a topic</small></span>
-            </button>
-            <button class="quick-card" id="quick-status" type="button">
-              <span class="quick-icon">▤</span>
-              <span><strong>System Status</strong><small>Check assistant diagnostics</small></span>
-            </button>
-          </div>
+            <div class="row">
+                <span>MEMORY</span>
+                <b class="off">○ LOCKED</b>
+            </div>
+
         </section>
 
-        <section class="conversation panel">
-          <div class="conversation-heading">
-            <h2 class="section-title">Conversation History</h2>
-            <button id="clear-btn" class="clear-button" type="button" title="Clear conversation">Clear</button>
-          </div>
-          <div id="chat" class="chat-window" aria-live="polite">
-            <div class="msg ai">Good evening, sir. Jarvis at your service. How may I assist you today?</div>
-          </div>
+        <!-- CHAT AREA -->
+        <section class="chat-section">
+
+            <div
+                class="chat"
+                id="chat"
+                role="log"
+                aria-live="polite"
+                aria-label="JARVIS conversation">
+            </div>
+
+            <!-- INPUT AREA -->
+            <div class="input-area">
+
+                <input
+                    type="text"
+                    id="msg"
+                    placeholder="Ask J.A.R.V.I.S..."
+                    autocomplete="off"
+                    aria-label="Enter your message"
+                >
+
+                <button
+                    type="button"
+                    id="send">
+                    SEND
+                </button>
+
+            </div>
+
         </section>
 
-        <section class="command-panel panel">
-          <input id="msg" type="text" placeholder="Type a command or use voice..." autocomplete="off" aria-label="Type a command">
-          <button id="send" class="send-button" type="button" aria-label="Send message">➤</button>
-          <button id="cam-btn" class="camera-button" type="button" aria-label="Attach an image" title="Attach image">▧</button>
-          <input id="img-input" type="file" accept="image/*" capture="environment" hidden>
-        </section>
-
-        <div class="bottom-controls">
-          <button id="wake-btn" class="wake-button" type="button"><span class="wake-led"></span><span id="wake-status">WAKE: OFF</span></button>
-          <span class="bottom-note">PERSONAL AI ASSISTANT <span>•</span> READY TO HELP</span>
-        </div>
-      </section>
     </main>
-    <footer class="footer"><span>J.A.R.V.I.S. INTERFACE</span><span>POWERED BY INTELLIGENCE</span></footer>
-  </div>
 
-  <script>
-    // Quick-command helpers. These use the same input/send controls as the main chat.
-    const jarvisInput = document.getElementById("msg");
-    const jarvisSend = document.getElementById("send");
-    function runQuickCommand(command) {
-      jarvisInput.value = command;
-      jarvisSend.click();
-    }
-    document.getElementById("quick-weather").addEventListener("click", () => {
-      const city = prompt("Enter your city for the weather report:");
-      if (city && city.trim()) runQuickCommand("Weather in " + city.trim());
-    });
-    document.getElementById("quick-time").addEventListener("click", () => {
-      const now = new Date();
-      runQuickCommand("What is the current time and date? " + now.toLocaleString());
-    });
-    document.getElementById("quick-search").addEventListener("click", () => {
-      const topic = prompt("What topic would you like J.A.R.V.I.S. to research?");
-      if (topic && topic.trim()) runQuickCommand("Research this topic: " + topic.trim());
-    });
-    document.getElementById("quick-status").addEventListener("click", () => {
-      runQuickCommand("Run a system status check and explain which assistant features are ready.");
-    });
-    document.getElementById("sound-toggle").addEventListener("click", () => {
-      const enabled = document.getElementById("sound-toggle").classList.toggle("selected");
-      document.getElementById("sound-toggle").title = enabled ? "Sound indicator selected" : "Sound indicator";
-    });
-    document.getElementById("settings-toggle").addEventListener("click", () => {
-      alert("J.A.R.V.I.S. settings: microphone and camera permissions are managed in your browser settings.");
-    });
-    document.getElementById("power-toggle").addEventListener("click", () => {
-      if (confirm("Clear the current J.A.R.V.I.S. session display?")) {
-        document.getElementById("clear-btn").click();
-      }
-    });
-    window.addEventListener("online", () => {
-      document.getElementById("network-monitor").textContent = "Online";
-    });
-    window.addEventListener("offline", () => {
-      document.getElementById("network-monitor").textContent = "Offline";
-    });
-    document.getElementById("network-monitor").textContent = navigator.onLine ? "Online" : "Offline";
-  </script>
-  <script src="script.js?v=11"></script>
+    <!-- JAVASCRIPT -->
+    <script src="script.js" defer></script>
+
 </body>
 </html>
