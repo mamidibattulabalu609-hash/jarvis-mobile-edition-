@@ -1,26 +1,43 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>J.A.R.V.I.S.</title>
+    <title>J.A.R.V.I.S. AI</title>
 
+    <!-- Orbs Library -->
     <script src="https://cdn.jsdelivr.net/npm/orbs@latest/dist/orbs.min.js"></script>
 
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-    <h1>J.A.R.V.I.S.</h1>
-    <p id="status">SYSTEM ONLINE</p>
+    <header>
+        <h1>J.A.R.V.I.S.</h1>
+        <p>PERSONAL AI ASSISTANT</p>
+    </header>
 
-    <div id="orb-container"></div>
+    <main>
+        <div id="status">SYSTEM ONLINE</div>
 
-    <button onclick="setJarvisVisualState('IDLE')">IDLE</button>
-    <button onclick="setJarvisVisualState('LISTENING')">LISTENING</button>
-    <button onclick="setJarvisVisualState('THINKING')">THINKING</button>
+        <!-- Orb Display -->
+        <div id="orb-container">
+            <div id="jarvis-orb"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="setJarvisVisualState('IDLE')">IDLE</button>
+            <button onclick="setJarvisVisualState('LISTENING')">LISTENING</button>
+            <button onclick="setJarvisVisualState('THINKING')">THINKING</button>
+        </div>
+    </main>
+
+    <footer>
+        J.A.R.V.I.S. SYSTEMS ONLINE
+    </footer>
 
     <script src="script.js"></script>
+
 </body>
 </html>
