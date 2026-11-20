@@ -72,15 +72,15 @@ async function callGemini(promptText) {
                     },
 
                     body: JSON.stringify({
-                        contents: [
-                            {
-                                role: "user",
-                                parts: [
-                                    { text: promptText }
-                                ]
-                            }
-                        ]
-                    })
+    contents: [{
+        role: "user",
+        parts: [{ text: promptText }]
+    }],
+    generationConfig: {
+        maxOutputTokens: 256,
+        temperature: 0.7
+    }
+})
                 }
             );
 
