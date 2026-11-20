@@ -20,7 +20,7 @@ if (!API_KEY) {
 // ===== 2. MODEL LIST =====
 
 const MODELS = [
-    "gemini-3.6-flash",
+    "gemini-2.5-flash",
     "gemini-flash-latest"
 ];
 
