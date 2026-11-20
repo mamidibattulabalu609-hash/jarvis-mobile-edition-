@@ -1,177 +1,117 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&display=swap');
 
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Orbitron', sans-serif;
 }
 
 body {
-    background: #000;
-    color: #0ff;
-    padding: 20px;
-    overflow-x: hidden;
+    background: radial-gradient(circle, #071b2c, #000);
+    color: #00ffff;
+    font-family: 'Orbitron', sans-serif;
+    min-height: 100vh;
+    text-align: center;
 }
 
 header {
-    text-align: center;
+    padding: 30px 10px;
 }
 
-header h1 {
-    letter-spacing: 6px;
-    text-shadow: 0 0 12px #0ff;
+h1 {
+    font-size: 35px;
+    letter-spacing: 8px;
+    text-shadow: 0 0 15px cyan;
 }
 
 header p {
-    font-size: 10px;
+    margin-top: 12px;
+    font-size: 12px;
     letter-spacing: 4px;
-    opacity: 0.6;
 }
 
-.core {
-    position: relative;
-    width: 160px;
-    height: 160px;
-    margin: 25px auto;
+#status {
+    margin: 25px;
+    font-size: 16px;
+    letter-spacing: 4px;
+    text-shadow: 0 0 10px cyan;
 }
 
-.ring {
-    position: absolute;
-    border: 2px solid #0ff;
+#orb-container {
+    width: 280px;
+    height: 280px;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jarvis-orb {
+    width: 170px;
+    height: 170px;
     border-radius: 50%;
-    box-shadow: 0 0 15px #0ff;
-}
+    background: radial-gradient(
+        circle,
+        white,
+        cyan 30%,
+        #004466 65%,
+        transparent 75%
+    );
 
-.r1 {
-    inset: 0;
-    border-top-color: transparent;
-    animation: spin 3s linear infinite;
-}
-
-.r2 {
-    inset: 20px;
-    border-bottom-color: transparent;
-    animation: spin 2s linear infinite reverse;
-}
-
-.center {
-    position: absolute;
-    inset: 50px;
-    background: #0ff;
-    border-radius: 50%;
-    box-shadow: 0 0 30px #0ff;
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+    box-shadow: 0 0 30px cyan, 0 0 80px cyan;
+    animation: pulse 2s infinite ease-in-out;
+    transition: 0.4s;
 }
 
 @keyframes pulse {
+    0%, 100% {
+        transform: scale(0.9);
+    }
+
     50% {
-        opacity: 0.4;
+        transform: scale(1.08);
     }
 }
 
-.core-text {
-    text-align: center;
+.controls {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 25px 10px;
+}
+
+button {
+    background: transparent;
+    color: cyan;
+    border: 1px solid cyan;
+    border-radius: 8px;
+    padding: 13px 18px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+button:hover {
+    background: cyan;
+    color: black;
+    box-shadow: 0 0 20px cyan;
+}
+
+footer {
+    margin-top: 40px;
+    color: #527b85;
     font-size: 11px;
     letter-spacing: 3px;
 }
 
-.status {
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    background: rgba(0, 255, 255, 0.05);
-    padding: 12px;
-    margin: 20px 0;
-}
-
-.status h2 {
-    font-size: 12px;
-    letter-spacing: 2px;
-    margin-bottom: 8px;
-}
-
-.row {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 11px;
-    margin: 6px 0;
-}
-
-.on {
-    color: #0f0;
-}
-
-.off {
-    color: #f00;
-}
-
-.chat {
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    height: 150px;
-    overflow-y: auto;
-    padding: 10px;
-    font-size: 12px;
-}
-
-.msg {
-    margin: 6px 0;
-    padding: 6px;
-    border-left: 2px solid #0ff;
-    background: rgba(0, 255, 255, 0.08);
-}
-
-.msg.user {
-    border-left-color: #fff;
-}
-
-.input-area {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-input {
-    flex: 1 1 220px;
-    min-width: 0;
-    background: #000;
-    border: 1px solid #0ff;
-    color: #0ff;
-    padding: 10px;
-}
-
-button {
-    background: #0ff;
-    color: #000;
-    border: none;
-    padding: 10px 16px;
-    font-weight: bold;
-    white-space: nowrap;
-}
-
-@media (max-width: 600px) {
-    body {
-        padding: 12px;
+@media (max-width: 480px) {
+    h1 {
+        font-size: 27px;
     }
 
-    .input-area input {
-        flex: 1 1 100%;
-        width: 100%;
-    }
-
-    .input-area button {
-        flex: 1 1 auto;
-        padding: 10px 9px;
-        font-size: 10px;
-    }
-
-    .row {
-        font-size: 10px;
+    #orb-container {
+        width: 240px;
+        height: 240px;
     }
 }
