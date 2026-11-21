@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>J.A.R.V.I.S. AI</title>
-
-    <!-- Orbs Library -->
-    <script src="https://cdn.jsdelivr.net/npm/orbs@latest/dist/orbs.min.js"></script>
+    <meta name="theme-color" content="#020b16">
+    <title>J.A.R.V.I.S.</title>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -14,29 +12,96 @@
 <body>
 
     <header>
-        <h1>J.A.R.V.I.S.</h1>
+        <h1>J.A.R.V.I.S</h1>
         <p>PERSONAL AI ASSISTANT</p>
     </header>
 
-    <main>
-        <div id="status">SYSTEM ONLINE</div>
+    <!-- JARVIS CORE -->
+    <div class="core">
+        <div class="ring r1"></div>
+        <div class="ring r2"></div>
+        <div class="center"></div>
+    </div>
 
-        <!-- Orb Display -->
-        <div id="orb-container">
-            <div id="jarvis-orb"></div>
+    <p class="core-text" id="system-status">
+        SYSTEM READY
+    </p>
+
+    <!-- SYSTEM DIAGNOSTICS -->
+    <div class="status">
+        <h2>SYSTEM DIAGNOSTICS</h2>
+
+        <div class="row">
+            <span>AI ENGINE</span>
+            <b class="on">● OPERATIONAL</b>
         </div>
 
-        <div class="controls">
-            <button onclick="setJarvisVisualState('IDLE')">IDLE</button>
-            <button onclick="setJarvisVisualState('LISTENING')">LISTENING</button>
-            <button onclick="setJarvisVisualState('THINKING')">THINKING</button>
+        <div class="row">
+            <span>CONNECTION</span>
+            <b class="on">● ONLINE</b>
         </div>
-    </main>
 
-    <footer>
-        J.A.R.V.I.S. SYSTEMS ONLINE
-    </footer>
+        <div class="row">
+            <span>VOICE INTERFACE</span>
+            <b class="on">● READY</b>
+        </div>
 
+        <div class="row">
+            <span>LONG-TERM MEMORY</span>
+            <b class="on">● ACTIVE</b>
+        </div>
+    </div>
+
+    <!-- CHAT DISPLAY -->
+    <div class="chat" id="chat"></div>
+
+    <!-- INPUT AREA -->
+    <div class="input-area">
+
+        <input
+            id="msg"
+            type="text"
+            placeholder="Enter a command for J.A.R.V.I.S..."
+            autocomplete="off"
+        >
+
+        <button id="send" type="button">
+            EXECUTE
+        </button>
+
+        <button
+            id="mic-btn"
+            type="button"
+            aria-label="Activate voice input"
+        >
+            🎙️
+        </button>
+
+        <button
+            id="cam-btn"
+            type="button"
+            aria-label="Analyze image"
+        >
+            📷
+        </button>
+
+        <button
+            id="clear-btn"
+            type="button"
+        >
+            CLEAR MEMORY
+        </button>
+<input
+    type="file"
+    id="img-input"
+    accept="image/*"
+    capture="environment"
+    hidden
+>
+
+    </div>
+
+    <!-- JAVASCRIPT -->
     <script src="script.js"></script>
 
 </body>
