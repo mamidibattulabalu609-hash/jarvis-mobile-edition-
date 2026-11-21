@@ -1,868 +1,1313 @@
-/* =====================================================
-   J.A.R.V.I.S. AI ASSISTANT
-   Gemini 3.6 Flash
-   Chat + Memory + Voice + Vision + 15 Tools
-===================================================== */
+/* =========================================================
+   J.A.R.V.I.S. PERSONAL AI ASSISTANT
+   Gemini 3.5 Flash | Agent tools | Voice | Camera | Memory
+   Works with the current index.html IDs:
+   chat, msg, send, mic, camera, clear, cameraContainer,
+   cameraPreview, cameraCanvas, capture
+========================================================= */
 
-// 1. CONFIGURATION
+(() => {
+  "use strict";
 
-const CONFIG = {
-    MODEL: "gemini-3.6-flash",
-    FALLBACK_MODEL: "gemini-3.5-flash-lite",
-    API_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
-    TIMEOUT: 30000
-};
+  // ---------- CONFIGURATION ----------
+  const CONFIG = {
+    MODEL: "gemini-3.5-flash",
+    API_BASE: "https://generativelanguage.googleapis.com/v1beta/models/",
+    MAX_HISTORY_MESSAGES: 16,
+    MAX_AGENT_STEPS: 5,
+    REQUEST_TIMEOUT_MS: 45000,
+    SPEECH_LANGUAGE: "en-IN",
+    AUTO_SPEAK: true,
+    SYSTEM_PROMPT:
+      "You are J.A.R.V.I.S., a helpful, concise personal AI assistant. " +
+      "Answer clearly and naturally. Use available tools when they genuinely help. " +
+      "Never claim a tool succeeded unless its result confirms success. " +
+      "Ask before taking actions that could delete or change user data."
+  };
 
-// Ask for API key every time the app opens.
-// Key is NOT stored in localStorage.
+  // API keys used in a browser can be seen by anyone who can access the site.
+  // For personal testing only. Use API-key restrictions in Google AI Studio.
+  const KEY_STORAGE = "jarvis_session_api_key";
+  const HISTORY_STORAGE = "jarvis_chat_history_v2";
+  const NOTES_STORAGE = "jarvis_notes_v1";
 
-let API_KEY = prompt("J.A.R.V.I.S. SYSTEM\n\nEnter your Gemini API Key:");
+  // ---------- ELEMENTS ----------
+  const $ = (id) => document.getElementById(id);
 
-if (API_KEY) {
-    API_KEY = API_KEY.trim();
-} else {
-    API_KEY = "";
-    alert("API key missing. J.A.R.V.I.S. is waiting for your API key.");
-}
+  const input = $("msg");
+  const sendBtn = $("send");
+  const micBtn = $("mic") || $("mic-btn");
+  const cameraBtn = $("camera") || $("cam-btn");
+  const clearBtn = $("clear") || $("clear-btn");
+  const chat = $("chat");
 
+  const cameraContainer = $("cameraContainer");
+  const cameraPreview = $("cameraPreview");
+  const cameraCanvas = $("cameraCanvas");
+  const captureBtn = $("capture");
 
-// 2. MEMORY SYSTEM
+  let apiKey = "";
+  let busy = false;
+  let recognition = null;
+  let listening = false;
+  let cameraStream = null;
+  let activeAssistantBubble = null;
+  let currentAbortController = null;
 
-let MEMORY = [];
-
-try {
-    const saved = JSON.parse(
-        localStorage.getItem("jarvis_memory") || "[]"
-    );
-
-    if (Array.isArray(saved)) {
-        MEMORY = saved.filter(m =>
-            m &&
-            (m.role === "user" || m.role === "model") &&
-            typeof m.text === "string"
-        ).slice(-30);
-    }
-} catch (error) {
-    MEMORY = [];
-}
-
-function saveMemory() {
+  // ---------- SAFE STORAGE ----------
+  function storageGet(storage, key, fallback) {
     try {
-        localStorage.setItem(
-            "jarvis_memory",
-            JSON.stringify(MEMORY.slice(-30))
-        );
+      const value = storage.getItem(key);
+      return value === null ? fallback : value;
     } catch (error) {
-        console.warn("Memory storage unavailable.");
+      console.warn("Storage read unavailable:", error);
+      return fallback;
     }
-}
+  }
 
+  function storageSet(storage, key, value) {
+    try {
+      storage.setItem(key, value);
+      return true;
+    } catch (error) {
+      console.warn("Storage write unavailable:", error);
+      return false;
+    }
+  }
 
-// 3. HTML ELEMENTS
+  function loadHistory() {
+    try {
+      const parsed = JSON.parse(storageGet(localStorage, HISTORY_STORAGE, "[]"));
+      return Array.isArray(parsed) ? parsed.slice(-CONFIG.MAX_HISTORY_MESSAGES) : [];
+    } catch {
+      return [];
+    }
+  }
 
-const chat = document.getElementById("chat");
-const input = document.getElementById("msg");
+  let history = loadHistory();
 
-const sendBtn = document.getElementById("send");
-const micBtn = document.getElementById("mic-btn");
-const clearBtn = document.getElementById("clear-btn");
-const camBtn = document.getElementById("cam-btn");
-const imgInput = document.getElementById("img-input");
+  function saveHistory() {
+    history = history.slice(-CONFIG.MAX_HISTORY_MESSAGES);
+    storageSet(localStorage, HISTORY_STORAGE, JSON.stringify(history));
+  }
 
+  function loadNotes() {
+    try {
+      const parsed = JSON.parse(storageGet(localStorage, NOTES_STORAGE, "[]"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
 
-// 4. CHAT DISPLAY
+  function saveNotes(notes) {
+    storageSet(localStorage, NOTES_STORAGE, JSON.stringify(notes));
+  }
 
-function add(message, type = "ai") {
+  // ---------- STATUS + CHAT UI ----------
+  function setStatus(message) {
+    const status = $("system-status");
+    if (status) status.textContent = message;
 
+    const connection = $("connection-label");
+    if (connection) connection.textContent = message;
+  }
+
+  function scrollChat() {
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  }
+
+  function addMessage(message, type = "ai") {
+    if (!chat) return null;
+
+    const bubble = document.createElement("div");
+    bubble.className = type === "user" ? "message user" : "message ai";
+    bubble.textContent =
+      (type === "user" ? "YOU: " : "J.A.R.V.I.S: ") + String(message || "");
+
+    chat.appendChild(bubble);
+    scrollChat();
+    return bubble;
+  }
+
+  function addAssistantBubble() {
+    const bubble = document.createElement("div");
+    bubble.className = "message ai";
+    bubble.textContent = "J.A.R.V.I.S: ";
+    chat?.appendChild(bubble);
+    scrollChat();
+    return bubble;
+  }
+
+  function updateAssistantBubble(bubble, text) {
+    if (!bubble) return;
+    bubble.textContent = "J.A.R.V.I.S: " + text;
+    scrollChat();
+  }
+
+  function addLinkMessage(label, url) {
     if (!chat) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "message ai";
 
-    const div = document.createElement("div");
+    const text = document.createElement("span");
+    text.textContent = "J.A.R.V.I.S: " + label + " ";
 
-    div.className = type;
-    div.textContent = message;
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "OPEN";
+    link.style.color = "#00ffff";
+    link.style.textDecoration = "underline";
 
-    chat.appendChild(div);
+    wrapper.append(text, link);
+    chat.appendChild(wrapper);
+    scrollChat();
+  }
 
-    chat.scrollTop = chat.scrollHeight;
-}
+  function renderHistory() {
+    if (!chat) return;
+    chat.innerHTML = "";
 
-
-// 5. VOICE REPLY
-
-function speak(text) {
-
-    if (!("speechSynthesis" in window)) return;
-
-    speechSynthesis.cancel();
-
-    const speech = new SpeechSynthesisUtterance(text);
-
-    speech.lang = "en-IN";
-    speech.rate = 1;
-    speech.pitch = 1;
-
-    speechSynthesis.speak(speech);
-}
-
-
-// 6. API REQUEST SYSTEM
-
-async function fetchToolJson(url, options = {}) {
-
-    const controller = new AbortController();
-
-    const timeout = setTimeout(
-        () => controller.abort(),
-        CONFIG.TIMEOUT
-    );
-
-    try {
-
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
-
-        if (!response.ok) {
-            throw new Error(
-                "HTTP Error: " + response.status
-            );
-        }
-
-        return await response.json();
-
-    } finally {
-        clearTimeout(timeout);
-    }
-}
-
-
-// 7. GEMINI BRAIN
-
-async function callGemini(promptText, imageParts = []) {
-
-    if (!API_KEY) {
-        throw new Error("Please enter your Gemini API key.");
+    if (!history.length) {
+      addMessage("Systems online. How may I assist you today?", "ai");
+      return;
     }
 
-    const history = MEMORY.slice(-12).map(m => ({
-        role: m.role,
-        parts: [{ text: m.text }]
-    }));
-
-    const contents = [
-        ...history,
-        {
-            role: "user",
-            parts: [
-                { text: promptText },
-                ...imageParts
-            ]
-        }
-    ];
-
-    const models = [
-        CONFIG.MODEL,
-        CONFIG.FALLBACK_MODEL
-    ];
-
-    let lastError;
-
-    for (const model of models) {
-
-        try {
-
-            const url =
-                CONFIG.API_URL +
-                model +
-                ":generateContent?key=" +
-                encodeURIComponent(API_KEY);
-
-            const data = await fetchToolJson(url, {
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    contents,
-
-                    generationConfig: {
-                        maxOutputTokens: 2048
-                    }
-                })
-            });
-
-            const answer =
-                data.candidates?.[0]?.content?.parts
-                    ?.map(p => p.text || "")
-                    .join("")
-                    .trim();
-
-            if (!answer) {
-                throw new Error(
-                    data.error?.message ||
-                    "Gemini returned an empty response."
-                );
-            }
-
-            MEMORY.push(
-                { role: "user", text: promptText },
-                { role: "model", text: answer }
-            );
-
-            MEMORY = MEMORY.slice(-30);
-
-            saveMemory();
-
-            return answer;
-
-        } catch (error) {
-
-            lastError = error;
-
-            if (error.name === "AbortError") {
-                break;
-            }
-        }
-    }
-
-    throw lastError || new Error("Gemini connection failed.");
-}
-
-
-// 8. TOOLS - THE HANDS
-
-async function handleTools(text) {
-
-    const t = text.toLowerCase().trim();
-
-    // 1. TIME
-
-    if (/\b(time|current time|what time)\b/.test(t) ||
-        t.includes("సమయం")) {
-
-        return "The time is " +
-            new Date().toLocaleTimeString() +
-            ", Boss.";
-    }
-
-
-    // 2. DATE
-
-    if (/\b(date|today's date|today date)\b/.test(t)) {
-
-        return "Today's date is " +
-            new Date().toLocaleDateString() +
-            ", Boss.";
-    }
-
-
-    // 3. WEATHER
-
-    if (t.includes("weather") || t.includes("వాతావరణం")) {
-
-        if (!navigator.geolocation) {
-            return "Location is not supported by this browser.";
-        }
-
-        return new Promise(resolve => {
-
-            navigator.geolocation.getCurrentPosition(
-
-                async position => {
-
-                    try {
-
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-
-                        const url =
-                            "https://api.open-meteo.com/v1/forecast" +
-                            `?latitude=${lat}&longitude=${lon}` +
-                            "&current=temperature_2m,relative_humidity_2m,wind_speed_10m";
-
-                        const data = await fetchToolJson(url);
-
-                        const w = data.current;
-
-                        resolve(
-                            `Current temperature: ${w.temperature_2m}°C. ` +
-                            `Humidity: ${w.relative_humidity_2m}%. ` +
-                            `Wind speed: ${w.wind_speed_10m} km/h.`
-                        );
-
-                    } catch (error) {
-                        resolve("Weather service error.");
-                    }
-                },
-
-                () => resolve("Please allow location permission.")
-            );
-        });
-    }
-
-
-    // 4. TIMER
-
-    const timer = t.match(
-        /(\d+)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)/
-    );
-
-    if (timer && (t.includes("timer") || t.includes("remind"))) {
-
-        const amount = Number(timer[1]);
-        const unit = timer[2];
-
-        const factor =
-            unit.startsWith("h") ? 3600000 :
-            unit.startsWith("m") ? 60000 : 1000;
-
-        const duration = amount * factor;
-
-        if (duration > 86400000) {
-            return "Timer maximum is 24 hours.";
-        }
-
-        setTimeout(() => {
-
-            speak("Boss, your timer is complete!");
-
-            alert("J.A.R.V.I.S. TIMER COMPLETE!");
-
-        }, duration);
-
-        return `Timer started for ${amount} ${unit}.`;
-    }
-
-
-    // 5. TRANSLATE TO TELUGU
-
-    if (t.includes("translate")) {
-
-        const query = text
-            .replace(/translate( this)?/i, "")
-            .trim();
-
-        if (!query) return "Please provide text to translate.";
-
-        try {
-
-            const url =
-                "https://api.mymemory.translated.net/get?q=" +
-                encodeURIComponent(query) +
-                "&langpair=en|te";
-
-            const data = await fetchToolJson(url);
-
-            return "Telugu translation: " +
-                data.responseData.translatedText;
-
-        } catch (error) {
-            return "Translation service error.";
-        }
-    }
-
-
-    // 6. OPEN YOUTUBE
-
-    if (/^open youtube$/.test(t)) {
-
-        window.open(
-            "https://www.youtube.com/",
-            "_blank",
-            "noopener,noreferrer"
-        );
-
-        return "Opening YouTube, Boss.";
-    }
-
-
-    // 7. YOUTUBE SEARCH
-
-    const videoMatch = text.match(
-        /^(?:play|youtube(?: search)?|search youtube)\s+(.+)$/i
-    );
-
-    if (videoMatch) {
-
-        const query = videoMatch[1].trim();
-
-        window.open(
-            "https://www.youtube.com/results?search_query=" +
-            encodeURIComponent(query),
-            "_blank",
-            "noopener,noreferrer"
-        );
-
-        return "Searching YouTube for " + query;
-    }
-
-
-    // 8. OPEN GOOGLE
-
-    if (/^open google$/.test(t)) {
-
-        window.open(
-            "https://www.google.com/",
-            "_blank",
-            "noopener,noreferrer"
-        );
-
-        return "Opening Google, Boss.";
-    }
-
-
-    // 9. GOOGLE SEARCH
-
-    const googleMatch = text.match(
-        /^(?:google search|search google|search for)\s+(.+)$/i
-    );
-
-    if (googleMatch) {
-
-        const query = googleMatch[1].trim();
-
-        window.open(
-            "https://www.google.com/search?q=" +
-            encodeURIComponent(query),
-            "_blank",
-            "noopener,noreferrer"
-        );
-
-        return "Searching Google for " + query;
-    }
-
-
-    // 10. OPEN WEBSITE
-
-    const urlMatch = text.match(
-        /^open\s+(https?:\/\/\S+)$/i
-    );
-
-    if (urlMatch) {
-
-        try {
-
-            const destination = new URL(urlMatch[1]);
-
-            if (!["http:", "https:"].includes(destination.protocol)) {
-                return "Only HTTP and HTTPS links are allowed.";
-            }
-
-            window.open(
-                destination.href,
-                "_blank",
-                "noopener,noreferrer"
-            );
-
-            return "Opening website.";
-
-        } catch (error) {
-            return "Invalid website address.";
-        }
-    }
-
-
-    // 11. WIKIPEDIA SEARCH
-
-    const wikiMatch = text.match(
-        /^(?:wikipedia|search wikipedia)\s+(.+)$/i
-    );
-
-    if (wikiMatch) {
-
-        try {
-
-            const query = wikiMatch[1].trim();
-
-            const url =
-                "https://en.wikipedia.org/w/api.php" +
-                "?action=query&list=search&srsearch=" +
-                encodeURIComponent(query) +
-                "&format=json&origin=*";
-
-            const data = await fetchToolJson(url);
-
-            const result = data.query?.search?.[0];
-
-            if (!result) return "No Wikipedia result found.";
-
-            const snippet = result.snippet
-                .replace(/<[^>]*>/g, "");
-
-            return result.title + ": " + snippet;
-
-        } catch (error) {
-            return "Wikipedia search error.";
-        }
-    }
-
-
-    // 12. STOP VOICE
-
-    if (t === "stop speaking" || t === "stop voice") {
-
-        speechSynthesis.cancel();
-
-        return "Voice stopped, Boss.";
-    }
-
-
-    // 13. CLEAR CHAT
-
-    if (t === "clear chat") {
-
-        MEMORY = [];
-        saveMemory();
-
-        if (chat) chat.replaceChildren();
-
-        return "Chat history cleared.";
-    }
-
-
-    // 14. GREETING
-
-    if (/^(hello|hi jarvis|hey jarvis)$/.test(t)) {
-
-        return "Systems online. How may I assist you, Boss?";
-    }
-
-
-    // 15. FALL THROUGH TO GEMINI
-
-    return null;
-}
-
-
-// 9. AGENT MODE ENGINE
-
-async function runAgent(goal) {
-
-    add("J.A.R.V.I.S.: Agent Mode activated.", "ai");
-
-    const planPrompt = `
-You are J.A.R.V.I.S.
-
-Analyze this request:
-${goal}
-
-Return ONLY a JSON array containing tools to use.
-
-Available tools:
-["time","weather","date","search"]
-
-Rules:
-- Use only relevant tools.
-- Maximum 3 tools.
-- If no tool is required, return [].
-`;
-
-    try {
-
-        const plan = await callGemini(planPrompt);
-
-        const clean = plan
-            .replace(/```json|```/g, "")
-            .trim();
-
-        const tools = JSON.parse(clean);
-
-        const results = {};
-
-        for (const tool of tools.slice(0, 3)) {
-
-            if (tool === "time" ||
-                tool === "weather" ||
-                tool === "date") {
-
-                results[tool] = await handleTools(tool);
-            }
-
-            if (tool === "search") {
-                results.search = "Search can be performed through Google.";
-            }
-        }
-
-        return await callGemini(
-            "User goal: " + goal +
-            "\nAgent results: " + JSON.stringify(results) +
-            "\nGive a clear, concise answer."
-        );
-
-    } catch (error) {
-
-        return await callGemini(goal);
-    }
-}
-
-
-// 10. IMAGE VISION
-
-async function analyzeImage(file, promptText) {
-
-    if (!file || !file.type.startsWith("image/")) {
-        throw new Error("Please select a valid image.");
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-        throw new Error("Image must be smaller than 10 MB.");
-    }
-
-    const base64 = await new Promise((resolve, reject) => {
-
-        const reader = new FileReader();
-
-        reader.onload = () => {
-            resolve(reader.result.split(",")[1]);
-        };
-
-        reader.onerror = reject;
-
-        reader.readAsDataURL(file);
+    history.forEach((item) => {
+      const text = item.parts
+        ?.filter((part) => typeof part.text === "string")
+        .map((part) => part.text)
+        .join("");
+
+      if (text) {
+        addMessage(text, item.role === "user" ? "user" : "ai");
+      }
     });
+  }
 
-    const answer = await callGemini(
-        promptText || "Describe and analyze this image.",
-        [{
-            inline_data: {
-                mime_type: file.type,
-                data: base64
-            }
-        }]
-    );
+  // ---------- API KEY ----------
+  function askForApiKey() {
+    apiKey = storageGet(sessionStorage, KEY_STORAGE, "");
 
-    return answer;
-}
+    if (!apiKey) {
+      const entered = window.prompt(
+        "Enter your Gemini API key to start J.A.R.V.I.S.:"
+      );
 
-
-// 11. SEND MESSAGE
-
-let busy = false;
-
-async function sendMessage() {
-
-    if (busy || !input) return;
-
-    const message = input.value.trim();
-
-    if (!message) return;
-
-    if (!API_KEY) {
-
-        API_KEY = prompt("Enter your Gemini API Key:");
-
-        if (API_KEY) API_KEY = API_KEY.trim();
-
-        if (!API_KEY) {
-            add("J.A.R.V.I.S.: API key required.", "ai");
-            return;
-        }
+      if (entered && entered.trim()) {
+        apiKey = entered.trim();
+        storageSet(sessionStorage, KEY_STORAGE, apiKey);
+      }
     }
 
-    busy = true;
+    if (!apiKey) {
+      setStatus("API KEY REQUIRED");
+      addMessage(
+        "Gemini API key is required. Refresh the page and enter your key to connect.",
+        "ai"
+      );
+      return false;
+    }
 
-    add("YOU: " + message, "user");
+    setStatus("API KEY LOADED");
+    return true;
+  }
 
-    input.value = "";
+  // ---------- SPEECH OUTPUT ----------
+  function speak(text) {
+    if (!CONFIG.AUTO_SPEAK || !("speechSynthesis" in window) || !text) return;
 
     try {
+      window.speechSynthesis.cancel();
 
-        add("J.A.R.V.I.S.: Processing...", "ai");
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = CONFIG.SPEECH_LANGUAGE;
+      utterance.rate = 1;
+      utterance.pitch = 1;
 
-        const toolResult = await handleTools(message);
+      utterance.onstart = () => setStatus("SPEAKING...");
+      utterance.onend = () => setStatus("SYSTEM READY");
+      utterance.onerror = () => setStatus("SYSTEM READY");
 
-        let answer;
-
-        if (toolResult !== null) {
-
-            answer = toolResult;
-
-        } else if (isAgentModeRequest(message)) {
-
-            answer = await runAgent(message);
-
-        } else {
-
-            answer = await callGemini(message);
-        }
-
-        // Remove processing message
-        if (chat && chat.lastElementChild) {
-            chat.lastElementChild.remove();
-        }
-
-        add("J.A.R.V.I.S.: " + answer, "ai");
-
-        speak(answer);
-
+      window.speechSynthesis.speak(utterance);
     } catch (error) {
-
-        if (chat && chat.lastElementChild) {
-            chat.lastElementChild.remove();
-        }
-
-        add(
-            "J.A.R.V.I.S. ERROR: " + error.message,
-            "ai"
-        );
-
-    } finally {
-        busy = false;
+      console.warn("Speech output unavailable:", error);
     }
-}
+  }
 
+  // ---------- SPEECH INPUT ----------
+  function stopVoiceInput() {
+    if (recognition) {
+      try {
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.stop();
+      } catch (error) {
+        console.warn("Voice stop:", error);
+      }
+    }
 
-// 12. AGENT MODE DETECTION
+    recognition = null;
+    listening = false;
+    micBtn?.classList.remove("active");
+  }
 
-function isAgentModeRequest(text) {
+  function startVoiceInput() {
+    const SpeechAPI =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    return /\b(agent mode|run as agent|agent use|briefing|research and analyze)\b/i
-        .test(text);
-}
+    if (!SpeechAPI) {
+      addMessage(
+        "Voice input is not supported by this browser. Try the latest Chrome browser.",
+        "ai"
+      );
+      setStatus("VOICE NOT SUPPORTED");
+      return;
+    }
 
+    if (listening) {
+      stopVoiceInput();
+      setStatus("SYSTEM READY");
+      return;
+    }
 
-// 13. VOICE INPUT
+    if (busy) {
+      addMessage("Please wait until the current request finishes.", "ai");
+      return;
+    }
 
-const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
+    stopVoiceInput();
 
-let recognition = null;
-
-if (SpeechRecognition) {
-
-    recognition = new SpeechRecognition();
-
-    recognition.lang = "en-IN";
+    recognition = new SpeechAPI();
+    recognition.lang = CONFIG.SPEECH_LANGUAGE;
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
 
-    recognition.onresult = event => {
+    listening = true;
+    micBtn?.classList.add("active");
+    setStatus("LISTENING...");
 
-        const spoken =
-            event.results[0][0].transcript;
+    recognition.onresult = (event) => {
+      let transcript = "";
 
-        if (input) {
-            input.value = spoken;
-            sendMessage();
-        }
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+
+      if (input) input.value = transcript.trim();
+
+      const last = event.results[event.results.length - 1];
+      if (last?.isFinal && transcript.trim()) {
+        const finalText = transcript.trim();
+        stopVoiceInput();
+        if (input) input.value = finalText;
+        sendMessage();
+      }
     };
 
-    recognition.onerror = () => {
-        add("J.A.R.V.I.S.: Voice recognition error.", "ai");
+    recognition.onerror = (event) => {
+      stopVoiceInput();
+      const reason = event.error || "unknown";
+
+      if (reason === "not-allowed" || reason === "service-not-allowed") {
+        addMessage(
+          "Microphone permission was blocked. Allow microphone access in your browser settings.",
+          "ai"
+        );
+      } else if (reason === "no-speech") {
+        addMessage("No speech detected. Tap the microphone and try again.", "ai");
+      } else if (reason !== "aborted") {
+        addMessage("Voice input error: " + reason, "ai");
+      }
+
+      setStatus("VOICE ERROR");
     };
-}
 
-if (micBtn) {
+    recognition.onend = () => {
+      listening = false;
+      micBtn?.classList.remove("active");
+      if (String($("system-status")?.textContent || "").includes("LISTENING")) {
+        setStatus("SYSTEM READY");
+      }
+    };
 
-    micBtn.addEventListener("click", () => {
+    try {
+      recognition.start();
+    } catch (error) {
+      stopVoiceInput();
+      addMessage("Could not start the microphone. Please try again.", "ai");
+      setStatus("MICROPHONE ERROR");
+      console.error(error);
+    }
+  }
 
-        if (!recognition) {
-            add("Voice input is not supported in this browser.", "ai");
-            return;
+  // ---------- IMAGE HELPERS ----------
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        if (typeof reader.result !== "string") {
+          reject(new Error("Could not read the selected image."));
+          return;
+        }
+        resolve(reader.result.split(",")[1]);
+      };
+
+      reader.onerror = () => reject(new Error("Image reading failed."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function resizeImageDataUrl(dataUrl, maxSide = 1280, quality = 0.82) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+
+      image.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Image canvas is unavailable."));
+          return;
         }
 
-        recognition.start();
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+
+      image.onerror = () => reject(new Error("Could not process the image."));
+      image.src = dataUrl;
     });
-}
+  }
 
+  // ---------- CAMERA ----------
+  async function openCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      addMessage(
+        "Camera access is unavailable. Open this GitHub Pages site over HTTPS in a supported browser.",
+        "ai"
+      );
+      return;
+    }
 
-// 14. CAMERA BUTTON
+    if (cameraStream) {
+      closeCamera();
+      return;
+    }
 
-if (camBtn && imgInput) {
+    try {
+      setStatus("OPENING CAMERA...");
 
-    camBtn.addEventListener("click", () => {
-        imgInput.click();
-    });
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
 
-    imgInput.addEventListener("change", async () => {
+      if (cameraPreview) {
+        cameraPreview.srcObject = cameraStream;
+        await cameraPreview.play().catch(() => {});
+      }
 
-        const file = imgInput.files?.[0];
+      if (cameraContainer) cameraContainer.hidden = false;
+      setStatus("CAMERA READY");
+    } catch (error) {
+      cameraStream = null;
+      console.error("Camera error:", error);
 
+      // Fallback to the phone's image picker/camera.
+      const picker = document.createElement("input");
+      picker.type = "file";
+      picker.accept = "image/*";
+      picker.setAttribute("capture", "environment");
+
+      picker.addEventListener("change", async () => {
+        const file = picker.files?.[0];
         if (!file) return;
 
         try {
+          const data = await fileToBase64(file);
+          const resized = await resizeImageDataUrl(
+            "data:" + file.type + ";base64," + data
+          );
+          await sendMessage({
+            text: input?.value.trim() || "Describe this image.",
+            image: { mimeType: "image/jpeg", data: resized }
+          });
+        } catch (imageError) {
+          addMessage("Image error: " + imageError.message, "ai");
+        }
+      });
 
-            add("YOU: Analyze this image.", "user");
+      picker.click();
+      setStatus("CAMERA PICKER");
+    }
+  }
 
-            add("J.A.R.V.I.S.: Analyzing image...", "ai");
+  function closeCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
 
-            const answer = await analyzeImage(
-                file,
-                "Analyze this image and explain what you see."
-            );
+    if (cameraPreview) cameraPreview.srcObject = null;
+    if (cameraContainer) cameraContainer.hidden = true;
+    setStatus("SYSTEM READY");
+  }
 
-            if (chat && chat.lastElementChild) {
-                chat.lastElementChild.remove();
-            }
+  async function captureCameraImage() {
+    if (!cameraStream || !cameraPreview || !cameraCanvas) {
+      addMessage("Open the camera first, then tap CAPTURE IMAGE.", "ai");
+      return;
+    }
 
-            add("J.A.R.V.I.S.: " + answer, "ai");
+    const width = cameraPreview.videoWidth;
+    const height = cameraPreview.videoHeight;
 
-            speak(answer);
+    if (!width || !height) {
+      addMessage("Camera is still starting. Please try again in a moment.", "ai");
+      return;
+    }
 
+    cameraCanvas.width = width;
+    cameraCanvas.height = height;
+
+    const context = cameraCanvas.getContext("2d");
+    context.drawImage(cameraPreview, 0, 0, width, height);
+
+    const dataUrl = cameraCanvas.toDataURL("image/jpeg", 0.82);
+    const base64 = dataUrl.split(",")[1];
+
+    closeCamera();
+
+    await sendMessage({
+      text: input?.value.trim() || "Describe what you can see in this image.",
+      image: { mimeType: "image/jpeg", data: base64 }
+    });
+  }
+
+  // ---------- SAFE CALCULATOR ----------
+  function calculateExpression(expression) {
+    const source = String(expression)
+      .replace(/,/g, "")
+      .replace(/\b(sqrt|sin|cos|tan|log|ln|abs|pi)\b/gi, (word) => word.toLowerCase());
+
+    if (!/^[0-9+\-*/().%\s^a-z]*$/i.test(source)) {
+      throw new Error("Only basic arithmetic and supported math functions are allowed.");
+    }
+
+    const tokens = source.match(
+      /(?:\d+(?:\.\d*)?|\.\d+)|(?:sqrt|sin|cos|tan|log|ln|abs|pi)|[()+\-*/%^]/gi
+    );
+
+    if (!tokens || tokens.join("").replace(/\s/g, "") !== source.replace(/\s/g, "")) {
+      throw new Error("Please enter a valid math expression.");
+    }
+
+    let index = 0;
+
+    function peek() {
+      return tokens[index];
+    }
+
+    function consume() {
+      return tokens[index++];
+    }
+
+    function primary() {
+      const token = consume();
+
+      if (token === undefined) throw new Error("Incomplete expression.");
+
+      if (token === "+") return unary();
+      if (token === "-") return -unary();
+
+      if (token === "(") {
+        const value = addSub();
+        if (consume() !== ")") throw new Error("Missing closing bracket.");
+        return value;
+      }
+
+      const lower = token.toLowerCase();
+
+      if (lower === "pi") return Math.PI;
+
+      if (["sqrt", "sin", "cos", "tan", "log", "ln", "abs"].includes(lower)) {
+        if (consume() !== "(") throw new Error("Use function calls like sqrt(25).");
+        const value = addSub();
+        if (consume() !== ")") throw new Error("Missing function closing bracket.");
+
+        const functions = {
+          sqrt: Math.sqrt,
+          sin: (n) => Math.sin((n * Math.PI) / 180),
+          cos: (n) => Math.cos((n * Math.PI) / 180),
+          tan: (n) => Math.tan((n * Math.PI) / 180),
+          log: Math.log10,
+          ln: Math.log,
+          abs: Math.abs
+        };
+
+        return functions[lower](value);
+      }
+
+      const number = Number(token);
+      if (!Number.isFinite(number)) throw new Error("Invalid number.");
+      return number;
+    }
+
+    function power() {
+      let value = primary();
+      if (peek() === "^") {
+        consume();
+        value = Math.pow(value, unary());
+      }
+      return value;
+    }
+
+    function unary() {
+      return power();
+    }
+
+    function multiplyDivide() {
+      let value = unary();
+
+      while (["*", "/", "%"].includes(peek())) {
+        const operator = consume();
+        const right = unary();
+
+        if ((operator === "/" || operator === "%") && right === 0) {
+          throw new Error("Cannot divide by zero.");
+        }
+
+        if (operator === "*") value *= right;
+        if (operator === "/") value /= right;
+        if (operator === "%") value %= right;
+      }
+
+      return value;
+    }
+
+    function addSub() {
+      let value = multiplyDivide();
+
+      while (peek() === "+" || peek() === "-") {
+        const operator = consume();
+        const right = multiplyDivide();
+        value = operator === "+" ? value + right : value - right;
+      }
+
+      return value;
+    }
+
+    const result = addSub();
+
+    if (index !== tokens.length || !Number.isFinite(result)) {
+      throw new Error("Could not calculate that expression.");
+    }
+
+    return result;
+  }
+
+  // ---------- WEATHER ----------
+  async function getWeather(city) {
+    const place = String(city || "").trim() || "Vijayawada";
+
+    const geoUrl =
+      "https://geocoding-api.open-meteo.com/v1/search?name=" +
+      encodeURIComponent(place) +
+      "&count=1&language=en&format=json";
+
+    const geoResponse = await fetch(geoUrl);
+    if (!geoResponse.ok) throw new Error("Weather location lookup failed.");
+
+    const geo = await geoResponse.json();
+    const location = geo.results?.[0];
+
+    if (!location) return "I could not find that location.";
+
+    const weatherUrl =
+      "https://api.open-meteo.com/v1/forecast?latitude=" +
+      location.latitude +
+      "&longitude=" +
+      location.longitude +
+      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m";
+
+    const weatherResponse = await fetch(weatherUrl);
+    if (!weatherResponse.ok) throw new Error("Weather service is unavailable.");
+
+    const data = await weatherResponse.json();
+    const current = data.current;
+
+    if (!current) return "Current weather data is unavailable.";
+
+    return (
+      "Current weather in " +
+      location.name +
+      ": " +
+      current.temperature_2m +
+      "°C, feels like " +
+      current.apparent_temperature +
+      "°C, humidity " +
+      current.relative_humidity_2m +
+      "%, wind " +
+      current.wind_speed_10m +
+      " km/h."
+    );
+  }
+
+  // ---------- 15 AGENT TOOLS ----------
+  const TOOL_DECLARATIONS = [
+    {
+      name: "get_current_time",
+      description: "Get the current local time on the user's device.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "get_current_date",
+      description: "Get today's local date and day of week.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "calculate",
+      description: "Calculate a basic arithmetic or math expression. Supports + - * / % ^, brackets, pi, sqrt, sin, cos, tan, log, ln and abs. Trigonometry uses degrees.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          expression: { type: "STRING", description: "Math expression to calculate." }
+        },
+        required: ["expression"]
+      }
+    },
+    {
+      name: "get_weather",
+      description: "Get current weather for a city or place.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          city: { type: "STRING", description: "City or place name." }
+        },
+        required: ["city"]
+      }
+    },
+    {
+      name: "search_web",
+      description: "Create a Google search link for information the user wants to look up. This tool does not read search results.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          query: { type: "STRING", description: "Search terms." }
+        },
+        required: ["query"]
+      }
+    },
+    {
+      name: "open_website",
+      description: "Create a safe clickable link to a supported website.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          site: {
+            type: "STRING",
+            enum: ["google", "youtube", "gmail", "github", "instagram", "whatsapp", "wikipedia"],
+            description: "Website to open."
+          }
+        },
+        required: ["site"]
+      }
+    },
+    {
+      name: "save_note",
+      description: "Save a note in this browser on this device.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          note: { type: "STRING", description: "Note text to save." }
+        },
+        required: ["note"]
+      }
+    },
+    {
+      name: "list_notes",
+      description: "List notes saved in this browser.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "delete_note",
+      description: "Delete a saved note by its number. Ask the user which note if unclear.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          number: { type: "INTEGER", description: "1-based note number." }
+        },
+        required: ["number"]
+      }
+    },
+    {
+      name: "set_timer",
+      description: "Set a browser timer for a requested number of seconds, up to one hour.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          seconds: { type: "INTEGER", description: "Timer length in seconds, 1 to 3600." }
+        },
+        required: ["seconds"]
+      }
+    },
+    {
+      name: "get_device_info",
+      description: "Get basic browser and device information, without accessing personal files.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "get_network_status",
+      description: "Check whether the browser currently reports an online connection.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "get_battery_status",
+      description: "Get battery percentage and charging status if the browser supports it.",
+      parameters: { type: "OBJECT", properties: {} }
+    },
+    {
+      name: "convert_units",
+      description: "Convert common length, mass, temperature, and speed units.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          value: { type: "NUMBER", description: "Value to convert." },
+          from: { type: "STRING", description: "Source unit." },
+          to: { type: "STRING", description: "Target unit." }
+        },
+        required: ["value", "from", "to"]
+      }
+    },
+    {
+      name: "random_number",
+      description: "Generate a random whole number between min and max.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          min: { type: "INTEGER" },
+          max: { type: "INTEGER" }
+        },
+        required: ["min", "max"]
+      }
+    }
+  ];
+
+  // ---------- TOOL IMPLEMENTATIONS ----------
+  const WEBSITE_URLS = {
+    google: "https://www.google.com/",
+    youtube: "https://www.youtube.com/",
+    gmail: "https://mail.google.com/",
+    github: "https://github.com/",
+    instagram: "https://www.instagram.com/",
+    whatsapp: "https://www.whatsapp.com/",
+    wikipedia: "https://www.wikipedia.org/"
+  };
+
+  const activeTimers = [];
+
+  function convertUnits(value, from, to) {
+    const f = String(from).toLowerCase().trim();
+    const t = String(to).toLowerCase().trim();
+
+    const aliases = {
+      m: "m", meter: "m", meters: "m", km: "km", kilometer: "km", kilometers: "km",
+      cm: "cm", mm: "mm", mile: "mile", miles: "mile", ft: "ft", feet: "ft",
+      kg: "kg", kilogram: "kg", kilograms: "kg", g: "g", gram: "g", grams: "g",
+      lb: "lb", lbs: "lb", pound: "lb", pounds: "lb",
+      c: "c", "°c": "c", celsius: "c", f: "f", "°f": "f", fahrenheit: "f",
+      k: "k", kelvin: "k", "m/s": "m/s", "km/h": "km/h", mph: "mph"
+    };
+
+    const a = aliases[f];
+    const b = aliases[t];
+    if (!a || !b) return "Unsupported units. Try m, km, cm, kg, g, lb, °C, °F, K, m/s, km/h or mph.";
+
+    let result;
+    const length = { m: 1, km: 1000, cm: 0.01, mm: 0.001, mile: 1609.344, ft: 0.3048 };
+    const mass = { kg: 1, g: 0.001, lb: 0.45359237 };
+    const speed = { "m/s": 1, "km/h": 1 / 3.6, mph: 0.44704 };
+
+    if (a in length && b in length) result = Number(value) * length[a] / length[b];
+    else if (a in mass && b in mass) result = Number(value) * mass[a] / mass[b];
+    else if (a in speed && b in speed) result = Number(value) * speed[a] / speed[b];
+    else if (["c", "f", "k"].includes(a) && ["c", "f", "k"].includes(b)) {
+      let celsius = Number(value);
+      if (a === "f") celsius = (celsius - 32) * 5 / 9;
+      if (a === "k") celsius = celsius - 273.15;
+      result = celsius;
+      if (b === "f") result = celsius * 9 / 5 + 32;
+      if (b === "k") result = celsius + 273.15;
+    } else {
+      return "Those units are from different measurement categories.";
+    }
+
+    return Number(result.toFixed(6)) + " " + to;
+  }
+
+  async function executeTool(name, args = {}) {
+    switch (name) {
+      case "get_current_time":
+        return new Date().toLocaleTimeString("en-IN");
+
+      case "get_current_date":
+        return new Date().toLocaleDateString("en-IN", {
+          weekday: "long", year: "numeric", month: "long", day: "numeric"
+        });
+
+      case "calculate":
+        return calculateExpression(args.expression);
+
+      case "get_weather":
+        return await getWeather(args.city);
+
+      case "search_web": {
+        const query = String(args.query || "").trim();
+        if (!query) return "No search query was provided.";
+        const url = "https://www.google.com/search?q=" + encodeURIComponent(query);
+        addLinkMessage("Search the web for: " + query, url);
+        return "I prepared a Google search link for: " + query;
+      }
+
+      case "open_website": {
+        const site = String(args.site || "").toLowerCase();
+        const url = WEBSITE_URLS[site];
+        if (!url) return "That website is not in the supported website list.";
+        addLinkMessage("Tap to open " + site + ":", url);
+        return "I prepared a safe link for " + site + ". Tap the OPEN link in the chat.";
+      }
+
+      case "save_note": {
+        const note = String(args.note || "").trim();
+        if (!note) return "The note is empty.";
+        const notes = loadNotes();
+        notes.push({ text: note, createdAt: new Date().toISOString() });
+        saveNotes(notes.slice(-100));
+        return "Note saved in this browser.";
+      }
+
+      case "list_notes": {
+        const notes = loadNotes();
+        if (!notes.length) return "There are no saved notes.";
+        return notes.map((note, index) => (index + 1) + ". " + note.text).join("\n");
+      }
+
+      case "delete_note": {
+        const number = Number(args.number);
+        const notes = loadNotes();
+        if (!Number.isInteger(number) || number < 1 || number > notes.length) {
+          return "That note number does not exist.";
+        }
+        const removed = notes.splice(number - 1, 1)[0];
+        saveNotes(notes);
+        return "Deleted note: " + removed.text;
+      }
+
+      case "set_timer": {
+        const seconds = Number(args.seconds);
+        if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) {
+          return "Timer length must be between 1 and 3600 seconds.";
+        }
+        const timerId = window.setTimeout(() => {
+          const message = "Your " + seconds + " second timer is complete.";
+          addMessage(message, "ai");
+          speak(message);
+        }, seconds * 1000);
+        activeTimers.push(timerId);
+        return "Timer started for " + seconds + " seconds.";
+      }
+
+      case "get_device_info":
+        return {
+          platform: navigator.platform || "Not reported",
+          language: navigator.language || "Unknown",
+          browser: navigator.userAgent,
+          screen: window.screen.width + " x " + window.screen.height
+        };
+
+      case "get_network_status":
+        return navigator.onLine ? "Browser reports that you are online." : "Browser reports that you are offline.";
+
+      case "get_battery_status": {
+        if (!navigator.getBattery) return "Battery information is not supported by this browser.";
+        const battery = await navigator.getBattery();
+        return {
+          percentage: Math.round(battery.level * 100) + "%",
+          charging: battery.charging
+        };
+      }
+
+      case "convert_units":
+        return convertUnits(args.value, args.from, args.to);
+
+      case "random_number": {
+        const min = Number(args.min);
+        const max = Number(args.max);
+        if (!Number.isInteger(min) || !Number.isInteger(max) || max < min || max - min > 1000000000) {
+          return "Please provide valid whole-number limits, with max greater than or equal to min.";
+        }
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      default:
+        return "Unknown tool: " + name;
+    }
+  }
+
+  // ---------- GEMINI REQUEST ----------
+  async function fetchGemini(contents, onStreamText) {
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      CONFIG.REQUEST_TIMEOUT_MS
+    );
+
+    const url =
+      CONFIG.API_BASE +
+      CONFIG.MODEL +
+      ":streamGenerateContent?alt=sse";
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: CONFIG.SYSTEM_PROMPT }]
+          },
+          contents,
+          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+          toolConfig: {
+            functionCallingConfig: { mode: "AUTO" }
+          },
+          generationConfig: {
+            temperature: 0.6,
+            maxOutputTokens: 1024
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData.error?.message || ("HTTP " + response.status);
+
+        if (response.status === 400 || response.status === 401 || response.status === 403) {
+          throw new Error("Gemini API error: " + message + ". Check your API key and model access.");
+        }
+
+        if (response.status === 429) {
+          throw new Error("Gemini rate limit reached. Wait a little and try again.");
+        }
+
+        if (response.status >= 500) {
+          throw new Error("Gemini service is temporarily unavailable. Please try again.");
+        }
+
+        throw new Error(message);
+      }
+
+      if (!response.body) {
+        throw new Error("Streaming response is not available in this browser.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+      const responseParts = [];
+
+      function processSseLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) return;
+
+        const raw = trimmed.slice(5).trim();
+        if (!raw || raw === "[DONE]") return;
+
+        let chunk;
+        try {
+          chunk = JSON.parse(raw);
+        } catch {
+          return;
+        }
+
+        const parts = chunk.candidates?.[0]?.content?.parts || [];
+
+        for (const part of parts) {
+          if (typeof part.text === "string") {
+            fullText += part.text;
+            responseParts.push({ text: part.text });
+            if (onStreamText) onStreamText(fullText);
+          }
+
+          if (part.functionCall) {
+            responseParts.push({ functionCall: part.functionCall });
+          }
+        }
+
+        const blockReason = chunk.promptFeedback?.blockReason;
+        if (blockReason) {
+          throw new Error("The request was blocked: " + blockReason);
+        }
+      }
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || "";
+
+        for (const line of lines) processSseLine(line);
+      }
+
+      if (buffer.trim()) processSseLine(buffer);
+
+      return {
+        text: fullText.trim(),
+        content: { role: "model", parts: responseParts },
+        parts: responseParts
+      };
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error("The request took too long and was stopped. Please try again.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+      currentAbortController = null;
+    }
+  }
+   // ---------- AGENT MODE ----------
+  async function runAgent(userText, image = null, bubble = null) {
+    const userParts = [];
+
+    if (userText) userParts.push({ text: userText });
+
+    if (image) {
+      userParts.push({
+        inlineData: {
+          mimeType: image.mimeType || "image/jpeg",
+          data: image.data
+        }
+      });
+    }
+
+    const requestContents = [
+      ...history.slice(-CONFIG.MAX_HISTORY_MESSAGES),
+      { role: "user", parts: userParts }
+    ];
+
+    for (let step = 0; step < CONFIG.MAX_AGENT_STEPS; step++) {
+      setStatus(step === 0 ? "THINKING..." : "AGENT WORKING...");
+
+      const result = await fetchGemini(requestContents, (partialText) => {
+        updateAssistantBubble(bubble, partialText);
+      });
+
+      const calls = result.parts.filter((part) => part.functionCall);
+
+      if (!calls.length) {
+        const answer = result.text || "I couldn't generate a response. Please try again.";
+
+        history.push({ role: "user", parts: userParts.filter(p => p.text) });
+        history.push({ role: "model", parts: [{ text: answer }] });
+        saveHistory();
+
+        return answer;
+      }
+
+      // Add Gemini's tool-call turn to the conversation.
+      requestContents.push(result.content);
+
+      // Execute each requested tool and send the result back to Gemini.
+      const functionResponses = [];
+
+      for (const part of calls) {
+        const call = part.functionCall;
+        let toolResult;
+
+        try {
+          toolResult = await executeTool(call.name, call.args || {});
         } catch (error) {
-
-            if (chat && chat.lastElementChild) {
-                chat.lastElementChild.remove();
-            }
-
-            add("Vision error: " + error.message, "ai");
-
-        } finally {
-            imgInput.value = "";
+          toolResult = "Tool error: " + (error.message || "Unknown error");
+          console.error("Tool error:", call.name, error);
         }
-    });
-}
 
+        functionResponses.push({
+          functionResponse: {
+            name: call.name,
+            response: { result: toolResult }
+          }
+        });
+      }
 
-// 15. CLEAR HISTORY
+      requestContents.push({
+        role: "user",
+        parts: functionResponses
+      });
 
-if (clearBtn) {
+      if (bubble) bubble.textContent = "J.A.R.V.I.S: Working with tools...";
+    }
 
-    clearBtn.addEventListener("click", () => {
+    throw new Error("Agent reached its tool-call limit. Please ask a shorter question.");
+  }
 
-        MEMORY = [];
+  // ---------- QUICK USER-GESTURE WEBSITE COMMAND ----------
+  function handleDirectWebsiteCommand(text) {
+    const match = text.toLowerCase().trim().match(/^open\s+(google|youtube|gmail|github|instagram|whatsapp|wikipedia)$/);
+    if (!match) return false;
 
-        saveMemory();
+    const url = WEBSITE_URLS[match[1]];
+    if (!url) return false;
 
-        if (chat) chat.replaceChildren();
+    // Runs directly from the user's button/Enter action.
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
 
-        speechSynthesis.cancel();
+    if (!opened) {
+      addLinkMessage("Popup blocked. Tap to open " + match[1] + ":", url);
+    } else {
+      addMessage("Opening " + match[1] + ".", "ai");
+    }
 
-        add("J.A.R.V.I.S.: Memory cleared, Boss.", "ai");
-    });
-}
+    return true;
+  }
 
+  // ---------- SEND MESSAGE ----------
+  async function sendMessage(imagePayload = null) {
+    if (busy) return;
 
-// 16. EVENT LISTENERS
+    const text = imagePayload?.text ?? input?.value.trim() ?? "";
+    if (!text && !imagePayload?.image) return;
 
-if (sendBtn) {
-    sendBtn.addEventListener("click", sendMessage);
-}
+    if (!apiKey && !askForApiKey()) return;
 
-if (input) {
+    busy = true;
+    stopVoiceInput();
 
-    input.addEventListener("keydown", event => {
+    if (input) input.value = "";
 
-        if (event.key === "Enter" && !event.shiftKey) {
+    addMessage(
+      text || "Please describe this image.",
+      "user"
+    );
 
-            event.preventDefault();
+    if (!imagePayload?.image && handleDirectWebsiteCommand(text)) {
+      busy = false;
+      setStatus("SYSTEM READY");
+      return;
+    }
 
-            sendMessage();
-        }
-    });
-}
+    activeAssistantBubble = addAssistantBubble();
+    activeAssistantBubble.textContent = "J.A.R.V.I.S: Connecting...";
 
+    if (sendBtn) sendBtn.disabled = true;
 
-// 17. SYSTEM STARTUP
+    try {
+      const answer = await runAgent(
+        text || "Describe the attached image clearly.",
+        imagePayload?.image || null,
+        activeAssistantBubble
+      );
 
-add(
-    "J.A.R.V.I.S.: Systems online. Gemini connection ready. How may I assist you, Boss?",
-    "ai"
-);
+      updateAssistantBubble(activeAssistantBubble, answer);
+      speak(answer);
+      setStatus("SYSTEM READY");
+    } catch (error) {
+      console.error("J.A.R.V.I.S request error:", error);
 
-console.log("J.A.R.V.I.S. SYSTEM INITIALIZED");
-console.log("Model:", CONFIG.MODEL);
+      updateAssistantBubble(
+        activeAssistantBubble,
+        "ERROR: " + (error.message || "Something went wrong.")
+      );
+
+      setStatus("CONNECTION ERROR");
+    } finally {
+      busy = false;
+      activeAssistantBubble = null;
+      if (sendBtn) sendBtn.disabled = false;
+      scrollChat();
+    }
+  }
+
+  // ---------- CLEAR MEMORY ----------
+  function clearMemory() {
+    const confirmed = window.confirm(
+      "Clear chat history and all notes saved by J.A.R.V.I.S on this browser?"
+    );
+
+    if (!confirmed) return;
+
+    history = [];
+    saveHistory();
+    saveNotes([]);
+    renderHistory();
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    setStatus("MEMORY CLEARED");
+  }
+
+  // ---------- NETWORK STATUS ----------
+  window.addEventListener("online", () => setStatus("ONLINE"));
+  window.addEventListener("offline", () => setStatus("OFFLINE"));
+
+  // ---------- EVENT LISTENERS ----------
+  sendBtn?.addEventListener("click", () => sendMessage());
+
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  micBtn?.addEventListener("click", startVoiceInput);
+
+  cameraBtn?.addEventListener("click", openCamera);
+
+  captureBtn?.addEventListener("click", captureCameraImage);
+
+  clearBtn?.addEventListener("click", clearMemory);
+
+  // ---------- STARTUP ----------
+  renderHistory();
+
+  // Ask for the API key when the app opens if it isn't stored for this tab.
+  askForApiKey();
+
+  if (navigator.onLine) {
+    setStatus(apiKey ? "SYSTEM ONLINE" : "API KEY REQUIRED");
+  } else {
+    setStatus("OFFLINE");
+  }
+
+  // Stop camera when leaving the page.
+  window.addEventListener("pagehide", closeCamera);
+
+  console.log("J.A.R.V.I.S initialized. Agent tools, voice and camera ready.");
+})();
