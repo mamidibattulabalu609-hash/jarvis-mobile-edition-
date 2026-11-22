@@ -1,136 +1,107 @@
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <meta name="theme-color" content="#000000">
 
-    <title>J.A.R.V.I.S AI Assistant</title>
+    <title>J.A.R.V.I.S - Mobile Edition</title>
 
-    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<div class="container">
-
     <!-- HEADER -->
     <header class="header">
         <h1>J.A.R.V.I.S</h1>
-        <p>PERSONAL AI ASSISTANT</p>
+        <p>MOBILE EDITION</p>
     </header>
 
-    <!-- ARC REACTOR -->
-    <section class="reactor-section">
+    <!-- AI CORE -->
+    <main>
 
-        <div class="reactor">
+        <section class="core-section">
 
-            <div class="reactor-inner">
+            <div class="core" id="core">
 
-                <div class="reactor-core"></div>
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="ring r3"></div>
+
+                <div class="center"></div>
 
             </div>
 
-        </div>
+            <p class="core-text" id="coreText">
+                CORE ACTIVE
+            </p>
 
-        <h3>SYSTEM ONLINE</h3>
+        </section>
 
-    </section>
+        <!-- SYSTEM STATUS -->
+        <section class="status">
 
-    <!-- SYSTEM DIAGNOSTICS -->
-    <section class="diagnostics">
+            <h2>SYSTEM STATUS</h2>
 
-        <h2>SYSTEM DIAGNOSTICS</h2>
-
-        <div class="status">
-            <span>AI ENGINE</span>
-            <strong>● OPERATIONAL</strong>
-        </div>
-
-        <div class="status">
-            <span>CONNECTION</span>
-            <strong>● ONLINE</strong>
-        </div>
-
-        <div class="status">
-            <span>VOICE INTERFACE</span>
-            <strong>● READY</strong>
-        </div>
-
-        <div class="status">
-            <span>LONG-TERM MEMORY</span>
-            <strong>● ACTIVE</strong>
-        </div>
-
-    </section>
-
-    <!-- CHATBOX -->
-    <section class="chat-container">
-
-        <div id="chat" class="chat-box">
-
-            <div class="message user">
-                YOU: Hello Jarvis
+            <div class="row">
+                <span>AI CORE</span>
+                <b class="on" id="aiStatus">● ONLINE</b>
             </div>
 
-            <div class="message ai">
-                J.A.R.V.I.S: Hello! How can I assist you today?
+            <div class="row">
+                <span>NETWORK</span>
+                <b class="on" id="networkStatus">● ONLINE</b>
             </div>
 
-        </div>
+            <div class="row">
+                <span>VOICE</span>
+                <b class="off" id="voiceStatus">○ LOCKED</b>
+            </div>
 
-    </section>
+            <div class="row">
+                <span>MEMORY</span>
+                <b class="off" id="memoryStatus">○ LOCKED</b>
+            </div>
 
-    <!-- COMMAND INPUT -->
-    <div class="input-area">
+        </section>
 
-        <input
-            type="text"
-            id="msg"
-            placeholder="Enter a command for J.A.R.V.I.S..."
-            autocomplete="off"
-        >
+        <!-- CHAT AREA -->
+        <section class="chat-section">
 
-    </div>
+            <h2>AI COMMUNICATION</h2>
 
-    <!-- CONTROL BUTTONS -->
-    <div class="controls">
+            <div class="chat" id="chat" aria-live="polite">
+                <div class="bot-message">
+                    J.A.R.V.I.S: System ready. Awaiting your command.
+                </div>
+            </div>
 
-        <button id="send" class="execute">
-            EXECUTE
-        </button>
+        </section>
 
-        <button id="mic" class="control-btn" title="Voice Assistant">
-            🎙️
-        </button>
+        <!-- INPUT AREA -->
+        <section class="input-area">
 
-        <button id="camera" class="control-btn" title="Camera Vision">
-            📷
-        </button>
+            <input
+                type="text"
+                id="msg"
+                placeholder="Ask J.A.R.V.I.S..."
+                autocomplete="off"
+            >
 
-        <button id="clear" class="clear-btn">
-            CLEAR MEMORY
-        </button>
+            <button id="send" type="button">
+                SEND
+            </button>
 
-    </div>
+        </section>
 
-    <!-- CAMERA PREVIEW -->
-    <section id="cameraContainer" class="camera-container" hidden>
+    </main>
 
-        <video id="cameraPreview" autoplay playsinline></video>
-
-        <button id="capture">
-            CAPTURE IMAGE
-        </button>
-
-        <canvas id="cameraCanvas" hidden></canvas>
-
-    </section>
-
-</div>
-
-<script src="./script.js"></script>
+    <!-- JAVASCRIPT -->
+    <script src="script.js" defer></script>
 
 </body>
 </html>
-
